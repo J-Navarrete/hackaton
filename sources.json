@@ -1,0 +1,60 @@
+[
+  { "domain": "bcn.cl", "name": "Biblioteca del Congreso Nacional", "category": "congreso", "scope": "nacional" },
+  { "domain": "congreso.cl", "name": "Congreso Nacional", "category": "congreso", "scope": "nacional" },
+  { "domain": "senado.cl", "name": "Senado de Chile", "category": "congreso", "scope": "nacional" },
+  { "domain": "camara.cl", "name": "Camara de Diputadas y Diputados", "category": "congreso", "scope": "nacional" },
+  { "domain": "diariooficial.interior.gob.cl", "name": "Diario Oficial", "category": "congreso", "scope": "nacional" },
+
+  { "domain": "gob.cl", "name": "Gobierno de Chile", "category": "ejecutivo", "scope": "nacional" },
+  { "domain": "prensa.presidencia.cl", "name": "Prensa Presidencia", "category": "ejecutivo", "scope": "nacional" },
+  { "domain": "hacienda.cl", "name": "Ministerio de Hacienda", "category": "ejecutivo", "scope": "nacional" },
+  { "domain": "interior.gob.cl", "name": "Ministerio del Interior", "category": "ejecutivo", "scope": "nacional" },
+  { "domain": "minciencia.gob.cl", "name": "Ministerio de Ciencia, Tecnologia, Conocimiento e Innovacion", "category": "ejecutivo", "scope": "nacional" },
+  { "domain": "desarrollosocialyfamilia.gob.cl", "name": "Ministerio de Desarrollo Social y Familia", "category": "ejecutivo", "scope": "nacional" },
+
+  { "domain": "pjud.cl", "name": "Poder Judicial", "category": "judicial", "scope": "nacional" },
+  { "domain": "tribunalconstitucional.cl", "name": "Tribunal Constitucional", "category": "judicial", "scope": "nacional" },
+  { "domain": "contraloria.cl", "name": "Contraloria General de la Republica", "category": "judicial", "scope": "nacional" },
+
+  { "domain": "ine.cl", "name": "Instituto Nacional de Estadisticas (legacy)", "category": "estadistica", "scope": "nacional" },
+  { "domain": "ine.gob.cl", "name": "Instituto Nacional de Estadisticas", "category": "estadistica", "scope": "nacional" },
+  { "domain": "datos.gob.cl", "name": "Portal Nacional de Datos Abiertos", "category": "estadistica", "scope": "nacional" },
+  { "domain": "casen2024.cl", "name": "Encuesta CASEN 2024", "category": "estadistica", "scope": "nacional" },
+
+  { "domain": "bcentral.cl", "name": "Banco Central de Chile", "category": "economia", "scope": "nacional" },
+  { "domain": "sii.cl", "name": "Servicio de Impuestos Internos", "category": "economia", "scope": "nacional" },
+  { "domain": "dipres.gob.cl", "name": "Direccion de Presupuestos", "category": "economia", "scope": "nacional" },
+  { "domain": "chilecompra.cl", "name": "ChileCompra (compras publicas)", "category": "economia", "scope": "nacional" },
+
+  { "domain": "minsal.cl", "name": "Ministerio de Salud", "category": "salud", "scope": "nacional" },
+  { "domain": "repositoriodeis.minsal.cl", "name": "DEIS - Estadisticas de Salud", "category": "salud", "scope": "nacional" },
+  { "domain": "superdesalud.gob.cl", "name": "Superintendencia de Salud", "category": "salud", "scope": "nacional" },
+  { "domain": "datosabiertos.fonasa.cl", "name": "FONASA - Datos Abiertos", "category": "salud", "scope": "nacional" },
+
+  { "domain": "mineduc.cl", "name": "Ministerio de Educacion", "category": "educacion", "scope": "nacional" },
+  { "domain": "centroestudios.mineduc.cl", "name": "Centro de Estudios MINEDUC", "category": "educacion", "scope": "nacional" },
+  { "domain": "agenciaeducacion.cl", "name": "Agencia de Calidad de la Educacion", "category": "educacion", "scope": "nacional" },
+  { "domain": "informacionestadistica.agenciaeducacion.cl", "name": "Estadisticas Agencia de Calidad", "category": "educacion", "scope": "nacional" },
+  { "domain": "curriculumnacional.cl", "name": "Curriculum Nacional MINEDUC", "category": "educacion", "scope": "nacional" },
+
+  { "domain": "servel.cl", "name": "Servicio Electoral", "category": "electoral", "scope": "nacional" },
+
+  { "domain": "consejotransparencia.cl", "name": "Consejo para la Transparencia", "category": "transparencia", "scope": "nacional" },
+  { "domain": "gobiernotransparentechile.cl", "name": "Gobierno Transparente Chile", "category": "transparencia", "scope": "nacional" },
+  { "domain": "declaracionjurada.cl", "name": "Declaraciones Juradas de Patrimonio e Intereses", "category": "transparencia", "scope": "nacional" },
+
+  { "domain": "factchecking.cl", "name": "FastCheck CL (UDP)", "category": "fact-check", "scope": "nacional" },
+  { "domain": "vergara240.udp.cl", "name": "Vergara 240 - Periodismo de Investigacion UDP", "category": "fact-check", "scope": "nacional" },
+
+  { "domain": "repositorio.uchile.cl", "name": "Repositorio Academico Universidad de Chile", "category": "academico", "scope": "nacional" },
+  { "domain": "revistaderechopublico.uchile.cl", "name": "Revista de Derecho Publico U. de Chile", "category": "academico", "scope": "nacional" },
+  { "domain": "observatoriodedatos.uai.cl", "name": "Observatorio de Datos UAI", "category": "academico", "scope": "nacional" },
+
+  { "domain": "hia.paho.org", "name": "OPS/PAHO - Health in the Americas", "category": "internacional", "scope": "internacional" },
+  { "domain": "unodc.org", "name": "UNODC - Oficina ONU contra Drogas y Delito", "category": "internacional", "scope": "internacional" },
+  { "domain": "data.worldbank.org", "name": "Banco Mundial - Datos", "category": "internacional", "scope": "internacional" },
+  { "domain": "cepal.org", "name": "CEPAL - Comision Economica para America Latina", "category": "internacional", "scope": "internacional" },
+  { "domain": "oecd.org", "name": "OCDE - Organizacion para la Cooperacion y Desarrollo Economico", "category": "internacional", "scope": "internacional" },
+  { "domain": "imf.org", "name": "FMI - Fondo Monetario Internacional", "category": "internacional", "scope": "internacional" },
+  { "domain": "who.int", "name": "OMS - Organizacion Mundial de la Salud", "category": "internacional", "scope": "internacional" }
+]

@@ -1,0 +1,186 @@
+{% extends "base.html" %}
+{% block title %}Analizar video — PolitiCheck{% endblock %}
+{% block content %}
+
+<h1>Analizar un video</h1>
+<p class="muted" style="margin-bottom: 1.25rem;">
+  Pegá la URL completa. Soporta YouTube, YouTube Shorts, TikTok, Instagram Reels, y otras plataformas de yt-dlp.
+</p>
+
+<form id="analyze-form" onsubmit="return submitAnalyze(event)">
+  <div class="topbar">
+    <input
+      type="text"
+      id="video_url"
+      name="url"
+      placeholder="https://www.youtube.com/watch?v=..."
+      autofocus
+      required>
+    <button type="button" class="btn btn-light" onclick="pasteFromClipboard()">Pegar</button>
+    <button type="button" class="btn btn-light" onclick="clearInput()">Limpiar</button>
+    <button type="submit" class="btn btn-primary" id="submit-btn">Analizar</button>
+  </div>
+
+  <div class="card" style="padding: 1rem 1.25rem; margin-bottom: 1.25rem;">
+    <label for="language" style="display: block; font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.3rem; font-weight: 600;">Idioma del audio</label>
+    <select id="language" name="language" style="width: 100%; padding: 0.55rem 0.8rem; border: 2px solid var(--border); border-radius: var(--radius-md); background: var(--surface); font-family: inherit; font-size: 0.95rem;">
+      <option value="es" selected>Español</option>
+      <option value="">Auto-detectar</option>
+      <option value="en">Inglés</option>
+      <option value="pt">Portugués</option>
+    </select>
+  </div>
+</form>
+
+<div id="message" class="message"></div>
+
+<div id="progress-container" style="display: none;">
+  <h2>Progreso</h2>
+  <div class="card progress-card">
+    <div class="card-inner">
+      <div id="progress-status" class="progress-status">Iniciando…</div>
+      <div class="progress-log" id="progress-log"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+async function pasteFromClipboard() {
+  try {
+    const text = await navigator.clipboard.readText();
+    document.getElementById('video_url').value = text;
+  } catch (err) {
+    alert('No se pudo pegar. Usá Ctrl+V manualmente.');
+  }
+}
+
+function clearInput() {
+  document.getElementById('video_url').value = '';
+  document.getElementById('video_url').focus();
+}
+
+function submitAnalyze(ev) {
+  ev.preventDefault();
+  const form = ev.target;
+  const url = form.url.value.trim();
+  const language = form.language.value;
+  if (!url) return false;
+
+  const btn = document.getElementById('submit-btn');
+  const message = document.getElementById('message');
+  btn.disabled = true;
+  btn.textContent = 'Procesando…';
+  message.textContent = '';
+
+  const fd = new FormData();
+  fd.append('url', url);
+  if (language) fd.append('language', language);
+
+  fetch('/api/analyze', { method: 'POST', body: fd })
+    .then(r => r.json())
+    .then(data => {
+      if (data.error || data.detail) {
+        message.textContent = 'Error: ' + (data.error || data.detail);
+        btn.disabled = false;
+        btn.textContent = 'Analizar';
+        return;
+      }
+      document.getElementById('progress-container').style.display = 'block';
+      connectWS(data.job_id);
+    })
+    .catch(e => {
+      message.textContent = 'Error: ' + e;
+      btn.disabled = false;
+      btn.textContent = 'Analizar';
+    });
+  return false;
+}
+
+function connectWS(jobId) {
+  const log = document.getElementById('progress-log');
+  const status = document.getElementById('progress-status');
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  const ws = new WebSocket(`${proto}://${location.host}/ws/job/${jobId}`);
+
+  let videoId = null;
+  let claimsExpected = 0;
+  let claimsDone = 0;
+
+  function appendLine(text) {
+    log.textContent += text + '\n';
+    log.scrollTop = log.scrollHeight;
+  }
+  function shortQuote(s, n) {
+    s = (s || '').trim();
+    return s.length > n ? s.substring(0, n - 1) + '…' : s;
+  }
+
+  ws.onmessage = (msg) => {
+    const ev = JSON.parse(msg.data);
+    if (ev.type === 'ping') return;
+
+    if (ev.type === 'step_started') {
+      switch (ev.name) {
+        case 'download':          appendLine('Descargando el video…'); break;
+        case 'transcribe':        appendLine('Transcribiendo el audio…'); break;
+        case 'transcript_edit':   if (!ev.skipped) appendLine('Corrigiendo errores de transcripción…'); break;
+        case 'extract_claims':    appendLine('Identificando afirmaciones verificables…'); break;
+        case 'research_and_judge':
+          claimsExpected = ev.n_claims || 0;
+          if (claimsExpected > 0) appendLine(`Investigando ${claimsExpected} afirmación${claimsExpected === 1 ? '' : 'es'} en fuentes oficiales…`);
+          break;
+        case 'report':            appendLine('Generando reporte final…'); break;
+      }
+    } else if (ev.type === 'metadata_ready') {
+      const m = ev.metadata || {};
+      videoId = m.id;
+      status.textContent = m.title || 'Procesando…';
+      const channel = m.channel || m.uploader;
+      if (channel) appendLine(`   canal: ${channel}`);
+      if (m.duration) {
+        const mm = Math.floor(m.duration / 60);
+        const ss = String(Math.floor(m.duration % 60)).padStart(2, '0');
+        appendLine(`   duración: ${mm}:${ss}`);
+      }
+    } else if (ev.type === 'step_completed') {
+      if (ev.name === 'extract_claims') {
+        const n = (ev.claims || []).length;
+        if (n === 0) {
+          appendLine('   no se encontraron afirmaciones factuales en este contenido');
+        } else {
+          appendLine(`   ${n} afirmación${n === 1 ? '' : 'es'} identificada${n === 1 ? '' : 's'}`);
+        }
+      }
+    } else if (ev.type === 'claim_verdict_ready') {
+      claimsDone++;
+      const v = ev.verdict;
+      const quote = shortQuote(v.claim, 80);
+      appendLine(`   ✓ Verificada (${claimsDone}/${claimsExpected}): "${quote}"`);
+    } else if (ev.type === 'claim_skipped') {
+      claimsDone++;
+      const quote = shortQuote(ev.claim, 80);
+      appendLine(`   ⏸ Sin evidencia (${claimsDone}/${claimsExpected}): "${quote}"`);
+    } else if (ev.type === 'warn') {
+      // Silencioso para el usuario - solo logs técnicos
+    } else if (ev.type === 'error') {
+      appendLine(`Error: ${ev.error}`);
+      status.textContent = 'Error en el análisis';
+    } else if (ev.type === 'stream_end') {
+      if (ev.status === 'completed' && videoId) {
+        status.textContent = 'Listo. Llevándote al reporte…';
+        appendLine('');
+        appendLine('Análisis completo. Redirigiendo…');
+        setTimeout(() => { location.href = `/v/${videoId}`; }, 900);
+      } else {
+        status.textContent = 'Análisis finalizado con errores.';
+      }
+    }
+  };
+
+  ws.onerror = () => {
+    appendLine('Error de conexión con el servidor.');
+  };
+}
+</script>
+
+{% endblock %}

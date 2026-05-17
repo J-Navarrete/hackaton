@@ -1,0 +1,200 @@
+{% extends "base.html" %}
+{% block title %}{{ video.title }} — PolitiCheck{% endblock %}
+{% block content %}
+
+<div class="video-header">
+  <h1>{{ video.title }}</h1>
+  <div class="submeta">
+    <span class="platform-tag">{{ video.platform.replace('_', ' ') }}</span>
+    <span><strong>{{ video.channel or video.uploader }}</strong></span>
+    {% if video.duration %}<span>{{ video.duration|seconds_to_mmss }}</span>{% endif %}
+    {% if video.upload_date %}<span>{{ video.upload_date|fmt_date }}</span>{% endif %}
+    <span><a href="{{ video.url }}" target="_blank" rel="noopener">Ver original ↗</a></span>
+  </div>
+</div>
+
+<div class="detail-grid">
+
+  {# LEFT column: player + claims #}
+  <div class="left-col">
+    <div class="card">
+      <div class="player-box">
+        {% if video.embed_html %}
+          {{ video.embed_html|safe }}
+        {% else %}
+          <div class="player-fallback">
+            <div class="platform-icon">
+              {% if video.platform == 'tiktok' %}🎵{% elif video.platform == 'instagram' %}📷{% else %}🎬{% endif %}
+            </div>
+            <p>Esta plataforma no permite embeber el reproductor inline.</p>
+            <p style="margin-top: 0.5rem;"><a href="{{ video.url }}" target="_blank" rel="noopener" class="btn btn-primary" style="display: inline-block; text-decoration: none;">Abrir en {{ video.platform }} ↗</a></p>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="card">
+      <h2 style="margin-top: 0;">Afirmaciones verificadas ({{ verdicts|length }})</h2>
+
+      {% if verdicts %}
+      <div class="claims-list">
+        {% for claim in verdicts %}
+          {% set v = claim.verdict %}
+          {% set slug_map = {'Exacto': 'exacto', 'Parcialmente exacto': 'parcial', 'Inexacto': 'inexacto', 'Ridiculo': 'ridiculo'} %}
+          {% set slug = slug_map.get(v.verdict, 'otro') %}
+          {% set tier_counts = namespace(open=0, official=0) %}
+          {% for s in v.sources %}
+            {% if s.source_tier == 'open_web' %}{% set tier_counts.open = tier_counts.open + 1 %}{% else %}{% set tier_counts.official = tier_counts.official + 1 %}{% endif %}
+          {% endfor %}
+          <article class="verdict-card v-{{ slug }}">
+            <header class="vh">
+              <span class="badge badge-{{ slug }}">{{ v.verdict }}</span>
+              <span class="confidence">{{ (v.confidence * 100)|int }}% confianza</span>
+              {% if tier_counts.open > 0 %}
+              <span class="badge badge-fallback" title="Al menos una fuente provino de búsqueda extendida (open web) porque el allowlist estricto no tenía evidencia suficiente.">🔍 Búsqueda extendida</span>
+              {% endif %}
+              {% if claim.t_start is not none %}
+                {% if video.platform in ('youtube', 'youtube_short') %}
+                <button class="timestamp" onclick="seekTo({{ claim.t_start|int }})">▶ {{ claim.t_start|seconds_to_mmss }}</button>
+                {% else %}
+                <a class="timestamp" href="{{ video.url }}" target="_blank" rel="noopener">▶ {{ claim.t_start|seconds_to_mmss }}</a>
+                {% endif %}
+              {% endif %}
+              <button class="toggle-detail" onclick="toggleDetail(this)" aria-label="Ver detalle">
+                Detalle <span class="chevron">▼</span>
+              </button>
+            </header>
+
+            <blockquote class="claim-text">“{{ claim.text }}”</blockquote>
+
+            {% with tally=vote_tallies.get(claim.id) or {}, user_vote=user_votes.get(claim.id) %}
+              {% include "partials/vote_tally.html" %}
+            {% endwith %}
+
+            <div class="detail-body">
+              <p class="attribution">— {{ claim.speaker or "Hablante no identificado" }}</p>
+
+              <div class="correction">
+                <h3>Análisis</h3>
+                <p>{{ v.correction }}</p>
+              </div>
+
+              <div class="sources">
+                <h3>Fuentes ({{ v.sources|length }})</h3>
+                <ol>
+                  {% for s in v.sources %}
+                    <li class="source">
+                      <a class="source-title" href="{{ s.url }}" target="_blank" rel="noopener">{{ s.title }}</a>
+                      {% if s.source_tier == 'open_web' %}
+                      <span class="source-tier tier-open" title="Búsqueda extendida: fuera del allowlist estricto pero con prioridad a sitios confiables.">EXTENDIDA</span>
+                      {% elif s.source_tier == 'official_allowlist' %}
+                      <span class="source-tier tier-official" title="Del allowlist estricto de fuentes oficiales.">OFICIAL</span>
+                      {% endif %}
+                      <span class="source-date">consultado {{ s.retrieved_date }}</span>
+                      <blockquote class="excerpt">“{{ s.excerpt }}”</blockquote>
+                    </li>
+                  {% endfor %}
+                </ol>
+              </div>
+            </div>
+          </article>
+        {% endfor %}
+      </div>
+      {% else %}
+        <div class="empty">
+          <p>No se identificaron afirmaciones verificables en este video.</p>
+        </div>
+      {% endif %}
+    </div>
+
+    {% if skipped %}
+    <div class="card">
+      <h2 style="margin-top: 0;">Sin verificar ({{ skipped|length }})</h2>
+      <p class="muted" style="margin-bottom: 0.75rem;">No se encontró evidencia concluyente en las fuentes oficiales del allowlist.</p>
+      <div class="claims-list">
+        {% for claim in skipped %}
+        <article class="verdict-card v-skipped">
+          <header class="vh">
+            <span class="badge badge-skipped">Sin verificar</span>
+            {% if claim.t_start is not none %}
+              {% if video.platform in ('youtube', 'youtube_short') %}
+              <button class="timestamp" onclick="seekTo({{ claim.t_start|int }})">▶ {{ claim.t_start|seconds_to_mmss }}</button>
+              {% else %}
+              <a class="timestamp" href="{{ video.url }}" target="_blank" rel="noopener">▶ {{ claim.t_start|seconds_to_mmss }}</a>
+              {% endif %}
+            {% endif %}
+            {% if claim.search_summary %}
+            <button class="toggle-detail" onclick="toggleDetail(this)" aria-label="Ver detalle de la búsqueda">
+              Detalle <span class="chevron">▼</span>
+            </button>
+            {% endif %}
+          </header>
+          <blockquote class="claim-text">“{{ claim.text }}”</blockquote>
+          {% if claim.search_summary %}
+          <div class="detail-body">
+            <div class="correction" style="border-left-color: var(--text-faint);">
+              <h3>Detalle de la búsqueda intentada</h3>
+              <p>{{ claim.search_summary }}</p>
+            </div>
+          </div>
+          {% endif %}
+        </article>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  {# RIGHT column: sticky summary panel #}
+  <div class="right-col">
+    <div class="card summary-panel">
+      <div class="card-inner">
+        <h3>Resumen del análisis</h3>
+        <div class="tally">
+          <span class="badge badge-exacto">{{ tally.get('Exacto', 0) }} Exacto</span>
+          <span class="badge badge-parcial">{{ tally.get('Parcialmente exacto', 0) }} Parcial</span>
+          <span class="badge badge-inexacto">{{ tally.get('Inexacto', 0) }} Inexacto</span>
+          <span class="badge badge-ridiculo">{{ tally.get('Ridiculo', 0) }} Ridículo</span>
+          {% if skipped %}<span class="badge badge-skipped">{{ skipped|length }} Sin verificar</span>{% endif %}
+        </div>
+      </div>
+    </div>
+
+    <div class="card summary-panel">
+      <div class="card-inner">
+        <h3>Sobre este reporte</h3>
+        <p class="muted" style="font-size: 0.83rem; line-height: 1.55;">
+          Cada afirmación factual fue extraída automáticamente, investigada en un allowlist de fuentes oficiales,
+          y clasificada por un modelo de lenguaje siguiendo una taxonomía estricta. Los timestamps están sincronizados
+          con el reproductor de arriba — click en cualquier marca para saltar al momento exacto del discurso.
+        </p>
+        <p class="muted" style="font-size: 0.83rem; margin-top: 0.75rem;">
+          Tu voto se guarda anónimamente por sesión y ayuda a calibrar la confianza en las decisiones del AI.
+        </p>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+function toggleDetail(btn) {
+  const card = btn.closest('.verdict-card');
+  if (!card) return;
+  card.classList.toggle('expanded');
+}
+</script>
+
+{% if video.platform in ('youtube', 'youtube_short') %}
+<script>
+function seekTo(seconds) {
+  const iframe = document.getElementById('yt-player');
+  if (!iframe) return;
+  const videoId = iframe.dataset.videoId;
+  iframe.src = `https://www.youtube.com/embed/${videoId}?start=${seconds}&autoplay=1&rel=0`;
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+</script>
+{% endif %}
+
+{% endblock %}

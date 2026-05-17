@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}PolitiCheck — Inicio{% endblock %}
+{% block content %}
+
+<section class="home-hero">
+  <h1>Fact-checking automatizado de discursos políticos</h1>
+  <p>Pegá un link de YouTube, TikTok o Instagram Reel y obtené cada afirmación factual contrastada contra fuentes oficiales chilenas e internacionales, con votación humana para calibrar el resultado del AI.</p>
+  <a href="/analyze" class="cta">Analizar un video →</a>
+</section>
+
+<h2>Análisis recientes</h2>
+
+{% if videos %}
+<ul class="video-list">
+  {% for v in videos %}
+  <li>
+    <a href="/v/{{ v.id }}" style="text-decoration: none; color: inherit; display: block;">
+      <div class="video-row">
+        <div class="meta">
+          <div class="title">{{ v.title }}</div>
+          <div class="sub" style="margin-top: 0.4rem;">
+            <span class="platform-tag">{{ v.platform.replace('_', ' ') }}</span>
+            {% if v.channel %}<span>{{ v.channel }}</span>{% endif %}
+            {% if v.duration %}<span>{{ v.duration|seconds_to_mmss }}</span>{% endif %}
+            {% if v.upload_date %}<span>{{ v.upload_date|fmt_date }}</span>{% endif %}
+            <span>{{ v.claims|length }} claims</span>
+          </div>
+        </div>
+      </div>
+    </a>
+  </li>
+  {% endfor %}
+</ul>
+{% else %}
+<div class="card">
+  <div class="empty">
+    <div class="icon">📊</div>
+    <p>Todavía no hay análisis. <a href="/analyze">Empezá con tu primer video</a>.</p>
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}

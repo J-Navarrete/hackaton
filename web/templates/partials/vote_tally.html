@@ -1,0 +1,56 @@
+<div class="vote-block" id="vote-block-{{ claim.id }}">
+  {% set my = user_vote.vote_type if user_vote else none %}
+  <span class="prompt">¿Acuerdo?</span>
+  <div class="vote-buttons">
+    <button class="vote-btn {% if my == 'acuerdo' %}active-acuerdo{% endif %}"
+            hx-post="/api/vote/{{ claim.id }}"
+            hx-vals='{"vote_type": "acuerdo"}'
+            hx-target="#vote-block-{{ claim.id }}"
+            hx-swap="outerHTML">
+      ✓ Acuerdo
+    </button>
+    <button class="vote-btn {% if my == 'desacuerdo' %}active-desacuerdo{% endif %}"
+            onclick="document.getElementById('disagree-{{ claim.id }}').style.display = 'block'; this.disabled = true;">
+      ✗ Desacuerdo
+    </button>
+    <button class="vote-btn {% if my == 'no-se' %}active-no-se{% endif %}"
+            hx-post="/api/vote/{{ claim.id }}"
+            hx-vals='{"vote_type": "no-se"}'
+            hx-target="#vote-block-{{ claim.id }}"
+            hx-swap="outerHTML">
+      🤔 No estoy seguro
+    </button>
+  </div>
+
+  {% set total = (tally.get('acuerdo', 0) + tally.get('desacuerdo', 0) + tally.get('no-se', 0)) %}
+  {% if total > 0 %}
+  <div class="tally-result">
+    {% if tally.get('acuerdo', 0) > 0 %}<span>✓ {{ tally['acuerdo'] }}</span>{% endif %}
+    {% if tally.get('desacuerdo', 0) > 0 %}<span>✗ {{ tally['desacuerdo'] }}</span>{% endif %}
+    {% if tally.get('no-se', 0) > 0 %}<span>🤔 {{ tally['no-se'] }}</span>{% endif %}
+  </div>
+  {% endif %}
+
+  <form class="disagree-form" id="disagree-{{ claim.id }}"
+        style="display: {% if my == 'desacuerdo' %}block{% else %}none{% endif %};"
+        hx-post="/api/vote/{{ claim.id }}"
+        hx-target="#vote-block-{{ claim.id }}"
+        hx-swap="outerHTML">
+    <input type="hidden" name="vote_type" value="desacuerdo">
+    <div class="row">
+      <label>¿Cuál sería el veredicto correcto?</label>
+      <select name="user_verdict" required>
+        <option value="">— elegir —</option>
+        <option value="Exacto" {% if user_vote and user_vote.user_verdict == 'Exacto' %}selected{% endif %}>Exacto</option>
+        <option value="Parcialmente exacto" {% if user_vote and user_vote.user_verdict == 'Parcialmente exacto' %}selected{% endif %}>Parcialmente exacto</option>
+        <option value="Inexacto" {% if user_vote and user_vote.user_verdict == 'Inexacto' %}selected{% endif %}>Inexacto</option>
+        <option value="Ridiculo" {% if user_vote and user_vote.user_verdict == 'Ridiculo' %}selected{% endif %}>Ridículo</option>
+      </select>
+    </div>
+    <div class="row">
+      <label>Razón (opcional)</label>
+      <textarea name="reasoning" placeholder="¿Qué encontraste que el AI pasó por alto?">{{ user_vote.reasoning if user_vote else "" }}</textarea>
+    </div>
+    <button type="submit" class="btn btn-primary">Enviar desacuerdo</button>
+  </form>
+</div>
