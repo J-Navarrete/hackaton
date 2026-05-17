@@ -145,11 +145,20 @@
     {% endif %}
   </div>
 
+<<<<<<< HEAD
+  {# RIGHT column: informe panel #}
+  <div class="right-col">
+    <div class="card">
+      <div class="fact-panel">
+        <h2 class="fact-panel-title">Informe de Verificación</h2>
+
+=======
   {# RIGHT column: sticky summary panel #}
   <div class="right-col">
     <div class="card summary-panel">
       <div class="card-inner">
         <h3>Resumen del análisis</h3>
+>>>>>>> c52ca7a4c3418b51214353c8a145d9a5cfc4dac6
         <div class="tally">
           <span class="badge badge-exacto">{{ tally.get('Exacto', 0) }} Exacto</span>
           <span class="badge badge-parcial">{{ tally.get('Parcialmente exacto', 0) }} Parcial</span>
@@ -157,6 +166,61 @@
           <span class="badge badge-ridiculo">{{ tally.get('Ridiculo', 0) }} Ridículo</span>
           {% if skipped %}<span class="badge badge-skipped">{{ skipped|length }} Sin verificar</span>{% endif %}
         </div>
+<<<<<<< HEAD
+
+        {% set official_sources = all_sources | selectattr('source_tier', 'equalto', 'official_allowlist') | list %}
+        {% set open_sources = all_sources | selectattr('source_tier', 'equalto', 'open_web') | list %}
+
+        {% if all_sources %}
+        <div class="fuentes-resumen">
+          <span class="fuentes-count">{{ all_sources|length }} fuente{{ 's' if all_sources|length != 1 else '' }} consultada{{ 's' if all_sources|length != 1 else '' }}</span>
+          <span class="fuentes-breakdown">
+            {%- if official_sources %}{{ official_sources|length }} oficial{{ 'es' if official_sources|length != 1 else '' }}{% endif %}
+            {%- if official_sources and open_sources %} · {% endif %}
+            {%- if open_sources %}{{ open_sources|length }} extendida{{ 's' if open_sources|length != 1 else '' }}{% endif -%}
+          </span>
+        </div>
+        <div class="fuentes-list">
+          {% if official_sources %}
+          <p class="fuentes-group-label">Fuentes oficiales</p>
+          {% for s in official_sources %}
+          <div class="fuente-item">
+            <div class="fuente-meta">
+              <span class="source-tier tier-official">OFICIAL</span>
+              <span class="fuente-date">{{ s.retrieved_date }}</span>
+            </div>
+            <a class="fuente-title" href="{{ s.url }}" target="_blank" rel="noopener">{{ s.title }}</a>
+            {% if s.excerpt %}<p class="fuente-excerpt">"{{ s.excerpt }}"</p>{% endif %}
+          </div>
+          {% endfor %}
+          {% endif %}
+          {% if open_sources %}
+          <p class="fuentes-group-label">Búsqueda extendida</p>
+          {% for s in open_sources %}
+          <div class="fuente-item">
+            <div class="fuente-meta">
+              <span class="source-tier tier-open">EXTENDIDA</span>
+              <span class="fuente-date">{{ s.retrieved_date }}</span>
+            </div>
+            <a class="fuente-title" href="{{ s.url }}" target="_blank" rel="noopener">{{ s.title }}</a>
+            {% if s.excerpt %}<p class="fuente-excerpt">"{{ s.excerpt }}"</p>{% endif %}
+          </div>
+          {% endfor %}
+          {% endif %}
+        </div>
+        {% elif verdicts or skipped %}
+        <p class="muted" style="font-size: 0.85rem; padding: 0.5rem 0;">
+          No se encontraron fuentes externas para este análisis.
+        </p>
+        {% else %}
+        <p class="muted" style="font-size: 0.85rem; padding: 0.5rem 0;">
+          No se identificaron afirmaciones verificables en este contenido.
+        </p>
+        {% endif %}
+
+        <p class="informe-footer">
+          Análisis automático con IA · Click en ▶ para sincronizar el reproductor · Tu voto se guarda anónimamente por sesión
+=======
       </div>
     </div>
 
@@ -170,6 +234,7 @@
         </p>
         <p class="muted" style="font-size: 0.83rem; margin-top: 0.75rem;">
           Tu voto se guarda anónimamente por sesión y ayuda a calibrar la confianza en las decisiones del AI.
+>>>>>>> c52ca7a4c3418b51214353c8a145d9a5cfc4dac6
         </p>
       </div>
     </div>

@@ -23,7 +23,11 @@
 
   <div class="card" style="padding: 1rem 1.25rem; margin-bottom: 1.25rem;">
     <label for="language" style="display: block; font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.3rem; font-weight: 600;">Idioma del audio</label>
+<<<<<<< HEAD
+    <select id="language" name="language" style="width: 100%; padding: 0.55rem 0.8rem; border: 2px solid var(--border); border-radius: var(--radius-md); background: var(--surface); color: var(--text); font-family: inherit; font-size: 0.95rem;">
+=======
     <select id="language" name="language" style="width: 100%; padding: 0.55rem 0.8rem; border: 2px solid var(--border); border-radius: var(--radius-md); background: var(--surface); font-family: inherit; font-size: 0.95rem;">
+>>>>>>> c52ca7a4c3418b51214353c8a145d9a5cfc4dac6
       <option value="es" selected>Español</option>
       <option value="">Auto-detectar</option>
       <option value="en">Inglés</option>
@@ -167,9 +171,15 @@ function connectWS(jobId) {
       status.textContent = 'Error en el análisis';
     } else if (ev.type === 'stream_end') {
       if (ev.status === 'completed' && videoId) {
+<<<<<<< HEAD
+        status.textContent = '✓ Análisis completo — cargando informe…';
+        appendLine('');
+        appendLine('Todos los claims verificados. Abriendo informe de verificación…');
+=======
         status.textContent = 'Listo. Llevándote al reporte…';
         appendLine('');
         appendLine('Análisis completo. Redirigiendo…');
+>>>>>>> c52ca7a4c3418b51214353c8a145d9a5cfc4dac6
         setTimeout(() => { location.href = `/v/${videoId}`; }, 900);
       } else {
         status.textContent = 'Análisis finalizado con errores.';

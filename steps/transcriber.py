@@ -58,13 +58,61 @@ def transcribe_audio(
     if compute_type is None:
         compute_type = _default_compute_type(device)
 
+<<<<<<< HEAD
+    def _load_model(dev: str, ct: str) -> "WhisperModel":
+        return WhisperModel(model_size, device=dev, compute_type=ct)
+
+    def _run_transcribe(mdl, dev: str):
+        return mdl.transcribe(
+            str(audio_path),
+            language=language,
+            beam_size=beam_size,
+            vad_filter=vad_filter,
+            initial_prompt=initial_prompt,
+            condition_on_previous_text=condition_on_previous_text,
+        )
+
+    try:
+        model = _load_model(device, compute_type)
+=======
     try:
         model = WhisperModel(model_size, device=device, compute_type=compute_type)
+>>>>>>> c52ca7a4c3418b51214353c8a145d9a5cfc4dac6
     except Exception as e:
         if device == "cuda":
             print(f"      [warn] carga en CUDA fallo ({type(e).__name__}: {e}). Cayendo a CPU.")
             device = "cpu"
             compute_type = _default_compute_type(device)
+<<<<<<< HEAD
+            model = _load_model(device, compute_type)
+        else:
+            raise
+
+    def _collect_segments(mdl, dev: str):
+        """Materializa el generador completo — el error de cublas ocurre durante la iteración."""
+        it, inf = _run_transcribe(mdl, dev)
+        segs, parts = [], []
+        for s in it:
+            segs.append({"id": s.id, "start": round(s.start, 3),
+                         "end": round(s.end, 3), "text": s.text.strip()})
+            parts.append(s.text)
+        return segs, parts, inf
+
+    try:
+        segments, text_parts, info = _collect_segments(model, device)
+    except Exception as e:
+        if device == "cuda":
+            print(f"      [warn] CUDA fallo durante transcripcion ({type(e).__name__}: {e}). Reintentando en CPU.")
+            device = "cpu"
+            compute_type = _default_compute_type(device)
+            model = _load_model(device, compute_type)
+            segments, text_parts, info = _collect_segments(model, device)
+        else:
+            raise
+
+    return {
+        "text": "".join(text_parts).strip(),  # text_parts ya es lista materializada
+=======
             model = WhisperModel(model_size, device=device, compute_type=compute_type)
         else:
             raise
@@ -93,11 +141,16 @@ def transcribe_audio(
 
     return {
         "text": "".join(text_parts).strip(),
+>>>>>>> c52ca7a4c3418b51214353c8a145d9a5cfc4dac6
         "language": info.language,
         "language_probability": round(info.language_probability, 3),
         "duration": round(info.duration, 3),
         "model": f"faster-whisper:{model_size}",
+<<<<<<< HEAD
+        "device": device,   # refleja el device real usado (puede haber caído a cpu)
+=======
         "device": device,
+>>>>>>> c52ca7a4c3418b51214353c8a145d9a5cfc4dac6
         "compute_type": compute_type,
         "initial_prompt": initial_prompt,
         "segments": segments,
