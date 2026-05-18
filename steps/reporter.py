@@ -348,13 +348,13 @@ def render_report_html(verdicts_payload: dict, sources: list[dict] | None = None
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>PolitiCheck &mdash; {_esc(title)}</title>
+  <title>DatoContraRelato &mdash; {_esc(title)}</title>
   <style>{_CSS}</style>
 </head>
 <body>
   <main>
     <header class="page-header">
-      <p class="brand">POLITICHECK</p>
+      <p class="brand">DATOCONTRARELATO</p>
       <h1>{_esc(title)}</h1>
       <div class="meta">{meta_html}</div>
     </header>
@@ -378,7 +378,7 @@ def render_report_html(verdicts_payload: dict, sources: list[dict] | None = None
     {skipped_html}
 
     <footer>
-      <p>Generado por <strong>PolitiCheck</strong> &middot; pipeline automatizado de fact-checking de discursos pol&iacute;ticos.</p>
+      <p>Generado por <strong>DatoContraRelato</strong> &middot; pipeline automatizado de fact-checking de discursos pol&iacute;ticos.</p>
     </footer>
   </main>
 </body>

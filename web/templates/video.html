@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}{{ video.title }} — PolitiCheck{% endblock %}
+{% block title %}{{ video.title }} — DatoContraRelato{% endblock %}
 {% block content %}
 
 <div class="video-header">
@@ -49,7 +49,7 @@
           <article class="verdict-card v-{{ slug }}">
             <header class="vh">
               <span class="badge badge-{{ slug }}">{{ v.verdict }}</span>
-              <span class="confidence">{{ (v.confidence * 100)|int }}% confianza</span>
+              <span class="confidence" title="Confianza del modelo en el veredicto según la cantidad y solidez de la evidencia recopilada (no mide la veracidad de lo dicho por el político).">{{ (v.confidence * 100)|int }}% confianza del análisis</span>
               {% if tier_counts.open > 0 %}
               <span class="badge badge-fallback" title="Al menos una fuente provino de búsqueda extendida (open web) porque el allowlist estricto no tenía evidencia suficiente.">🔍 Búsqueda extendida</span>
               {% endif %}
@@ -65,7 +65,7 @@
               </button>
             </header>
 
-            <blockquote class="claim-text">“{{ claim.text }}”</blockquote>
+            <blockquote class="claim-text">"{{ claim.text }}"</blockquote>
 
             {% with tally=vote_tallies.get(claim.id) or {}, user_vote=user_votes.get(claim.id) %}
               {% include "partials/vote_tally.html" %}
@@ -91,7 +91,7 @@
                       <span class="source-tier tier-official" title="Del allowlist estricto de fuentes oficiales.">OFICIAL</span>
                       {% endif %}
                       <span class="source-date">consultado {{ s.retrieved_date }}</span>
-                      <blockquote class="excerpt">“{{ s.excerpt }}”</blockquote>
+                      <blockquote class="excerpt">"{{ s.excerpt }}"</blockquote>
                     </li>
                   {% endfor %}
                 </ol>
@@ -129,7 +129,7 @@
             </button>
             {% endif %}
           </header>
-          <blockquote class="claim-text">“{{ claim.text }}”</blockquote>
+          <blockquote class="claim-text">"{{ claim.text }}"</blockquote>
           {% if claim.search_summary %}
           <div class="detail-body">
             <div class="correction" style="border-left-color: var(--text-faint);">
@@ -145,20 +145,12 @@
     {% endif %}
   </div>
 
-<<<<<<< HEAD
   {# RIGHT column: informe panel #}
   <div class="right-col">
     <div class="card">
       <div class="fact-panel">
         <h2 class="fact-panel-title">Informe de Verificación</h2>
 
-=======
-  {# RIGHT column: sticky summary panel #}
-  <div class="right-col">
-    <div class="card summary-panel">
-      <div class="card-inner">
-        <h3>Resumen del análisis</h3>
->>>>>>> c52ca7a4c3418b51214353c8a145d9a5cfc4dac6
         <div class="tally">
           <span class="badge badge-exacto">{{ tally.get('Exacto', 0) }} Exacto</span>
           <span class="badge badge-parcial">{{ tally.get('Parcialmente exacto', 0) }} Parcial</span>
@@ -166,7 +158,6 @@
           <span class="badge badge-ridiculo">{{ tally.get('Ridiculo', 0) }} Ridículo</span>
           {% if skipped %}<span class="badge badge-skipped">{{ skipped|length }} Sin verificar</span>{% endif %}
         </div>
-<<<<<<< HEAD
 
         {% set official_sources = all_sources | selectattr('source_tier', 'equalto', 'official_allowlist') | list %}
         {% set open_sources = all_sources | selectattr('source_tier', 'equalto', 'open_web') | list %}
@@ -220,21 +211,6 @@
 
         <p class="informe-footer">
           Análisis automático con IA · Click en ▶ para sincronizar el reproductor · Tu voto se guarda anónimamente por sesión
-=======
-      </div>
-    </div>
-
-    <div class="card summary-panel">
-      <div class="card-inner">
-        <h3>Sobre este reporte</h3>
-        <p class="muted" style="font-size: 0.83rem; line-height: 1.55;">
-          Cada afirmación factual fue extraída automáticamente, investigada en un allowlist de fuentes oficiales,
-          y clasificada por un modelo de lenguaje siguiendo una taxonomía estricta. Los timestamps están sincronizados
-          con el reproductor de arriba — click en cualquier marca para saltar al momento exacto del discurso.
-        </p>
-        <p class="muted" style="font-size: 0.83rem; margin-top: 0.75rem;">
-          Tu voto se guarda anónimamente por sesión y ayuda a calibrar la confianza en las decisiones del AI.
->>>>>>> c52ca7a4c3418b51214353c8a145d9a5cfc4dac6
         </p>
       </div>
     </div>

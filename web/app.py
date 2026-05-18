@@ -1,8 +1,11 @@
 """FastAPI app factory."""
 from __future__ import annotations
 
+import logging
 import os
 import secrets
+import sys
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -11,8 +14,14 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="[%(name)s] %(levelname)s: %(message)s",
+)
+
 from web.db import _ensure_engine
 from web.routes import api, pages, ws
+from web.routes import live as live_routes
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -20,11 +29,24 @@ TEMPLATES_DIR = BASE_DIR / "templates"
 STATIC_DIR = BASE_DIR / "static"
 
 
+@asynccontextmanager
+async def _lifespan(app: FastAPI):
+    yield
+    # Shutdown: kill any ffmpeg subprocesses that are still running.
+    try:
+        from steps.live_capture import kill_all_ffmpegs
+        n = kill_all_ffmpegs()
+        if n:
+            print(f"[shutdown] killed {n} ffmpeg subprocess(es)", file=sys.stderr, flush=True)
+    except Exception as e:
+        print(f"[shutdown] kill_all_ffmpegs error: {e}", file=sys.stderr, flush=True)
+
+
 def create_app() -> FastAPI:
     load_dotenv()
     _ensure_engine()
 
-    app = FastAPI(title="PolitiCheck", docs_url="/docs", redoc_url=None)
+    app = FastAPI(title="DatoContraRelato", docs_url="/docs", redoc_url=None, lifespan=_lifespan)
 
     secret = os.environ.get("SESSION_SECRET") or secrets.token_hex(32)
     app.add_middleware(SessionMiddleware, secret_key=secret, same_site="lax")
@@ -38,6 +60,8 @@ def create_app() -> FastAPI:
     app.include_router(pages.router)
     app.include_router(api.router, prefix="/api")
     app.include_router(ws.router)
+    app.include_router(live_routes.router)
+    app.include_router(live_routes.api_router, prefix="/api")
 
     return app
 

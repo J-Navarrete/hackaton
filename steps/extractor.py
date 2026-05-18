@@ -129,8 +129,9 @@ def _format_segments(segments: list[dict]) -> str:
 def extract_claims(
     transcript: dict,
     video_metadata: dict | None = None,
-    model: str = "claude-sonnet-4-6",
+    model: str | None = None,
     max_tokens: int = 8000,
+    provider: str = "claude",
 ) -> list[dict]:
     segments = transcript.get("segments") or []
     if not segments:
@@ -153,9 +154,25 @@ def extract_claims(
 
     user_content = "\n".join(parts)
 
+    if provider == "minimax":
+        from .minimax_client import DEFAULT_MODEL, chat, get_tool_args, to_openai_tool, to_openai_tool_choice
+        msg = chat(
+            messages=[{"role": "user", "content": user_content}],
+            system=_SYSTEM,
+            tools=[to_openai_tool(_SUBMIT_CLAIMS_TOOL)],
+            tool_choice=to_openai_tool_choice("submit_claims"),
+            model=model or DEFAULT_MODEL,
+            max_tokens=max_tokens + 1000,
+        )
+        args = get_tool_args(msg, "submit_claims")
+        if args is None:
+            raise ValueError("MiniMax no llamo submit_claims")
+        return args.get("claims", [])
+
+    claude_model = model or "claude-sonnet-4-6"
     client = Anthropic()
     response = client.messages.create(
-        model=model,
+        model=claude_model,
         max_tokens=max_tokens,
         system=_SYSTEM,
         tools=[_SUBMIT_CLAIMS_TOOL],

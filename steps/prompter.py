@@ -32,8 +32,9 @@ def generate_initial_prompt(
     channel: str | None = None,
     description: str | None = None,
     tags: list[str] | None = None,
-    model: str = "claude-haiku-4-5-20251001",
+    model: str | None = None,
     max_tokens: int = 400,
+    provider: str = "claude",
 ) -> str:
     title = (title or "").strip()
     channel = (channel or "").strip()
@@ -55,12 +56,22 @@ def generate_initial_prompt(
 
     user_content = "\n".join(lines)
 
+    if provider == "minimax":
+        from .minimax_client import DEFAULT_MODEL, chat, get_text
+        msg = chat(
+            messages=[{"role": "user", "content": user_content}],
+            system=_SYSTEM,
+            model=model or DEFAULT_MODEL,
+            max_tokens=max_tokens + 500,
+        )
+        return get_text(msg)
+
+    claude_model = model or "claude-haiku-4-5-20251001"
     client = Anthropic()
     response = client.messages.create(
-        model=model,
+        model=claude_model,
         max_tokens=max_tokens,
         system=_SYSTEM,
         messages=[{"role": "user", "content": user_content}],
     )
-
     return response.content[0].text.strip()

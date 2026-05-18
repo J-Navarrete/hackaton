@@ -1,11 +1,14 @@
 {% extends "base.html" %}
-{% block title %}PolitiCheck — Inicio{% endblock %}
+{% block title %}DatoContraRelato — Inicio{% endblock %}
 {% block content %}
 
 <section class="home-hero">
   <h1>Fact-checking automatizado de discursos políticos</h1>
   <p>Pegá un link de YouTube, TikTok o Instagram Reel y obtené cada afirmación factual contrastada contra fuentes oficiales chilenas e internacionales, con votación humana para calibrar el resultado del AI.</p>
-  <a href="/analyze" class="cta">Analizar un video →</a>
+  <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
+    <a href="/analyze" class="cta">Analizar un video →</a>
+    <a href="/live" class="cta">Analizar live (actual o pasado) →</a>
+  </div>
 </section>
 
 <h2>Análisis recientes</h2>

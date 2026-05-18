@@ -90,8 +90,9 @@ def _format_segments(segments: list[dict]) -> str:
 def post_edit_transcript(
     transcript: dict,
     video_metadata: dict | None = None,
-    model: str = "claude-haiku-4-5-20251001",
+    model: str | None = None,
     max_tokens: int = 8000,
+    provider: str = "claude",
 ) -> dict:
     segments = transcript.get("segments") or []
     if not segments:
@@ -115,10 +116,14 @@ def post_edit_transcript(
 
     user_content = "\n".join(parts)
 
+    if provider == "minimax":
+        return _post_edit_minimax(transcript, segments, user_content, model, max_tokens)
+
+    claude_model = model or "claude-haiku-4-5-20251001"
     client = Anthropic()
     try:
         response = client.messages.create(
-            model=model,
+            model=claude_model,
             max_tokens=max_tokens,
             system=_SYSTEM,
             tools=[_TOOL],
@@ -128,7 +133,7 @@ def post_edit_transcript(
     except Exception as e:
         result = dict(transcript)
         result["post_edit"] = {
-            "model": model,
+            "model": claude_model,
             "error": f"{type(e).__name__}: {e}",
             "n_segments_corrected": 0,
         }
@@ -147,12 +152,70 @@ def post_edit_transcript(
             changes_summary = block.input.get("changes_summary", "")
             break
 
+    return _apply_corrections(transcript, segments, corrected_by_id, changes_summary, claude_model)
+
+
+def _post_edit_minimax(
+    transcript: dict,
+    segments: list[dict],
+    user_content: str,
+    model: str | None,
+    max_tokens: int,
+) -> dict:
+    from .minimax_client import DEFAULT_MODEL, chat, get_tool_args, to_openai_tool, to_openai_tool_choice
+    effective_model = model or DEFAULT_MODEL
+    try:
+        msg = chat(
+            messages=[{"role": "user", "content": user_content}],
+            system=_SYSTEM,
+            tools=[to_openai_tool(_TOOL)],
+            tool_choice=to_openai_tool_choice("submit_corrected_segments"),
+            model=effective_model,
+            max_tokens=max_tokens + 1000,
+        )
+    except Exception as e:
+        result = dict(transcript)
+        result["post_edit"] = {
+            "model": effective_model,
+            "error": f"{type(e).__name__}: {e}",
+            "n_segments_corrected": 0,
+        }
+        return result
+
+    args = get_tool_args(msg, "submit_corrected_segments")
+    if not args:
+        result = dict(transcript)
+        result["post_edit"] = {
+            "model": effective_model,
+            "n_segments_corrected": 0,
+            "note": "MiniMax no llamo submit_corrected_segments.",
+        }
+        return result
+
+    corrected_by_id: dict[int, str] = {}
+    for s in args.get("segments", []):
+        if isinstance(s, dict) and "id" in s and "text" in s:
+            try:
+                corrected_by_id[int(s["id"])] = str(s["text"])
+            except (TypeError, ValueError):
+                continue
+
+    return _apply_corrections(transcript, segments, corrected_by_id, args.get("changes_summary", ""), effective_model)
+
+
+def _apply_corrections(
+    transcript: dict,
+    segments: list[dict],
+    corrected_by_id: dict[int, str],
+    changes_summary: str,
+    model_used: str,
+) -> dict:
     if not corrected_by_id:
         result = dict(transcript)
         result["post_edit"] = {
-            "model": model,
+            "model": model_used,
             "n_segments_corrected": 0,
-            "note": "El modelo no llamo submit_corrected_segments.",
+            "note": "El modelo no llamo la herramienta de correccion.",
         }
         return result
 
@@ -176,7 +239,7 @@ def post_edit_transcript(
     result["segments"] = new_segments
     result["text"] = " ".join(text_parts).strip()
     result["post_edit"] = {
-        "model": model,
+        "model": model_used,
         "changes_summary": changes_summary,
         "n_segments_corrected": n_corrected,
         "n_segments_total": len(segments),

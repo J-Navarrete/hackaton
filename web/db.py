@@ -10,7 +10,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Iterator
 
-from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, String, Text, create_engine
+from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Integer, String, Text, create_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, sessionmaker, Session
 
 
@@ -102,6 +102,23 @@ class Vote(Base):
     claim: Mapped[Claim] = relationship(back_populates="votes")
 
 
+class LiveSession(Base):
+    __tablename__ = "live_sessions"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)  # 12-char hex
+    url: Mapped[str] = mapped_column(String)
+    video_id: Mapped[str | None] = mapped_column(ForeignKey("videos.id", ondelete="SET NULL"), nullable=True)
+    title: Mapped[str | None] = mapped_column(Text, nullable=True)
+    channel: Mapped[str | None] = mapped_column(String, nullable=True)
+    status: Mapped[str] = mapped_column(String, default="starting")  # starting | running | stopped | failed
+    started_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    pending_count: Mapped[int] = mapped_column(Integer, default=0)
+    verified_count: Mapped[int] = mapped_column(Integer, default=0)
+    skipped_count: Mapped[int] = mapped_column(Integer, default=0)
+    discarded_count: Mapped[int] = mapped_column(Integer, default=0)
+
+
 _engine = None
 _SessionLocal = None
 
@@ -116,8 +133,38 @@ def _ensure_engine():
             future=True,
         )
         Base.metadata.create_all(_engine)
+        _apply_lightweight_migrations(_engine)
         _SessionLocal = sessionmaker(bind=_engine, expire_on_commit=False, autoflush=False)
     return _engine, _SessionLocal
+
+
+def _apply_lightweight_migrations(engine) -> None:
+    """Add columns that were introduced after a table's initial creation.
+
+    SQLAlchemy's create_all() only creates missing tables, not missing columns.
+    Each entry is idempotent: we check PRAGMA table_info before issuing ALTER.
+    """
+    from sqlalchemy import text
+
+    expected: dict[str, list[tuple[str, str]]] = {
+        "live_sessions": [
+            ("discarded_count", "INTEGER NOT NULL DEFAULT 0"),
+        ],
+    }
+
+    with engine.begin() as conn:
+        for table, cols in expected.items():
+            existing = {
+                row[1]
+                for row in conn.exec_driver_sql(f"PRAGMA table_info({table})").fetchall()
+            }
+            if not existing:
+                continue  # table doesn't exist yet — create_all will handle next boot
+            for col_name, col_decl in cols:
+                if col_name not in existing:
+                    conn.exec_driver_sql(
+                        f"ALTER TABLE {table} ADD COLUMN {col_name} {col_decl}"
+                    )
 
 
 def get_session() -> Iterator[Session]:

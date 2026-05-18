@@ -89,6 +89,15 @@ async def run_job(job: Job, **pipeline_kwargs) -> None:
 
             elif t == "claim_verdict_ready" and video_id:
                 verdict = ev["verdict"]
+                existing_sources = verdict.get("sources") or []
+                if len(existing_sources) < 2:
+                    existing_urls = {s["url"] for s in existing_sources if s.get("url")}
+                    extra = [
+                        {"title": e["title"], "url": e["url"], "retrieved_date": e["retrieved_date"], "excerpt": e.get("excerpt", "")}
+                        for e in (ev.get("research_evidence") or [])
+                        if isinstance(e, dict) and e.get("url") and e["url"] not in existing_urls
+                    ]
+                    verdict = dict(verdict, sources=existing_sources + extra)
                 claim_dict = {
                     "id": verdict.get("id"),
                     "claim": verdict.get("claim"),

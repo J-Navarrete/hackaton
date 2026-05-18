@@ -70,6 +70,13 @@ def main() -> int:
         action="store_true",
         help="No hace busqueda extendida (open web) cuando el allowlist estricto no tiene evidencia.",
     )
+    parser.add_argument(
+        "--llm-provider",
+        default="claude",
+        choices=["claude", "minimax"],
+        help="Proveedor LLM para pasos de texto (prompter, extractor, editor, veredictos). Default: claude. "
+             "Con 'minimax' la investigacion (web_search) sigue usando Claude.",
+    )
     args = parser.parse_args()
 
     run_pipeline(
@@ -82,6 +89,7 @@ def main() -> int:
         concurrency=args.concurrency,
         skip_transcript_edit=args.no_transcript_edit,
         fallback_to_open_web=not args.no_fallback_search,
+        llm_provider=args.llm_provider,
     )
     return 0
 

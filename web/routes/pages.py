@@ -61,7 +61,6 @@ def video_detail(
         if c.verdict:
             tally_by_verdict[c.verdict.verdict] += 1
 
-<<<<<<< HEAD
     seen_source_urls: set[str] = set()
     all_sources: list[dict] = []
     for c in claims_with_verdict:
@@ -72,8 +71,6 @@ def video_detail(
                     seen_source_urls.add(url)
                     all_sources.append(s)
 
-=======
->>>>>>> c52ca7a4c3418b51214353c8a145d9a5cfc4dac6
     vote_tallies = {}
     user_votes = {}
     for c in video.claims:
@@ -93,10 +90,7 @@ def video_detail(
             "verdicts": claims_with_verdict,
             "skipped": skipped,
             "tally": tally_by_verdict,
-<<<<<<< HEAD
             "all_sources": all_sources,
-=======
->>>>>>> c52ca7a4c3418b51214353c8a145d9a5cfc4dac6
             "vote_tallies": vote_tallies,
             "user_votes": user_votes,
             "user_id": uid,

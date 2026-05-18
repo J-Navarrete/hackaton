@@ -86,6 +86,7 @@ async def _research_and_judge_one(
     max_tokens_research: int = 4000,
     max_tokens_verdict: int = 4000,
     fallback_to_open_web: bool = True,
+    verdict_provider: str = "claude",
 ) -> dict:
     research = await _research_one_tiered(
         client,
@@ -101,7 +102,7 @@ async def _research_and_judge_one(
         return {"claim": claim, "research": research, "verdict": None, "skipped": True}
 
     verdict_record = await _judge_one(
-        client, claim, research, verdict_model, max_tokens_verdict
+        client, claim, research, verdict_model, max_tokens_verdict, provider=verdict_provider
     )
     _propagate_source_tier(verdict_record, research)
     # Add a flag to the verdict so the UI can show "extended search used"
@@ -122,6 +123,7 @@ async def stream_pipeline(
     sources_path: Path = SOURCES_PATH,
     concurrency: int = 5,
     fallback_to_open_web: bool = True,
+    llm_provider: str = "claude",
 ) -> AsyncIterator[dict]:
     """Run the full fact-check pipeline, yielding events as each step progresses.
 
@@ -162,6 +164,7 @@ async def stream_pipeline(
                     channel=metadata.get("channel") or metadata.get("uploader"),
                     description=metadata.get("description"),
                     tags=metadata.get("tags"),
+                    provider=llm_provider,
                 ),
             )
             initial_prompt = initial_prompt or None
@@ -169,6 +172,10 @@ async def stream_pipeline(
             yield _event("warn", message=f"prompter fallo: {e}")
             initial_prompt = None
     yield _event("step_completed", step=2, name="prompter", initial_prompt=initial_prompt)
+
+    if llm_provider not in ("claude", "minimax"):
+        yield _event("warn", message=f"llm_provider desconocido '{llm_provider}', usando 'claude'")
+        llm_provider = "claude"
 
     # [3/7] Transcribe
     yield _event("step_started", step=3, name="transcribe", model=model_size)
@@ -207,7 +214,7 @@ async def stream_pipeline(
         try:
             transcript = await loop.run_in_executor(
                 None,
-                lambda: post_edit_transcript(transcript=transcript, video_metadata=metadata),
+                lambda: post_edit_transcript(transcript=transcript, video_metadata=metadata, provider=llm_provider),
             )
             pe = transcript.get("post_edit") or {}
             yield _event(
@@ -233,7 +240,7 @@ async def stream_pipeline(
     yield _event("step_started", step=5, name="extract_claims")
     try:
         claims = await loop.run_in_executor(
-            None, lambda: extract_claims(transcript=transcript, video_metadata=metadata)
+            None, lambda: extract_claims(transcript=transcript, video_metadata=metadata, provider=llm_provider)
         )
     except Exception as e:
         yield _event("error", step=5, error=f"extract: {type(e).__name__}: {e}")
@@ -281,6 +288,7 @@ async def stream_pipeline(
                 return await _research_and_judge_one(
                     client, claim, allowed_domains, today,
                     fallback_to_open_web=fallback_to_open_web,
+                    verdict_provider=llm_provider,
                 )
 
         tasks = [asyncio.create_task(_bounded(c)) for c in claims]
@@ -308,7 +316,11 @@ async def stream_pipeline(
                 yield _event("claim_skipped", **skipped_record)
             else:
                 verdicts.append(result["verdict"])
-                yield _event("claim_verdict_ready", verdict=result["verdict"])
+                yield _event(
+                    "claim_verdict_ready",
+                    verdict=result["verdict"],
+                    research_evidence=result["research"].get("evidence") or [],
+                )
 
     # Persist research + verdicts
     RESEARCH_DIR.mkdir(parents=True, exist_ok=True)

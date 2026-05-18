@@ -1,0 +1,603 @@
+{% extends "base.html" %}
+{% block title %}{{ live.title or "Transmisión en vivo" }} — DatoContraRelato{% endblock %}
+{% block head_extra %}
+<script src="https://www.youtube.com/iframe_api"></script>
+{% endblock %}
+{% block content %}
+
+<div class="video-header">
+  <h1>{{ live.title or live.url }}</h1>
+  <div class="submeta">
+    <span class="platform-tag">youtube live</span>
+    {% if live.channel %}<span><strong>{{ live.channel }}</strong></span>{% endif %}
+    <span><a href="{{ live.url }}" target="_blank" rel="noopener">Ver en YouTube ↗</a></span>
+  </div>
+  {% if live_start_offset and live_start_offset > 0 %}
+  {% set _off_int = live_start_offset|int %}
+  {% set _hh = (_off_int // 3600) %}
+  {% set _mm = ((_off_int % 3600) // 60) %}
+  {% set _ss = (_off_int % 60) %}
+  <div class="card" style="margin-top: 0.75rem; padding: 0.6rem 0.9rem; background: rgba(56, 189, 248, 0.10); border-left: 4px solid var(--accent);">
+    <p style="margin: 0; font-size: 0.9rem;">
+      <strong>Análisis sincronizado:</strong> el procesamiento empieza en
+      <strong>{% if _hh %}{{ '%02d' % _hh }}:{% endif %}{{ '%02d' % _mm }}:{{ '%02d' % _ss }}</strong>
+      del video. El primer claim puede tardar ~60–90 segundos en aparecer.
+    </p>
+  </div>
+  {% endif %}
+</div>
+
+<div class="detail-grid">
+
+  {# LEFT column: player + pending + verified + skipped #}
+  <div class="left-col">
+
+    {# Player card #}
+    <div class="card">
+      <div class="player-box" id="player-box" data-start-offset="{{ (live_start_offset or 0)|int }}">
+        {% if video and video.id %}
+          <iframe id="yt-player"
+            data-video-id="{{ video.id }}"
+            src="https://www.youtube.com/embed/{{ video.id }}?rel=0&enablejsapi=1{% if live_start_offset and live_start_offset > 0 %}&start={{ live_start_offset|int }}{% endif %}"
+            frameborder="0"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+            referrerpolicy="strict-origin-when-cross-origin"
+            allowfullscreen></iframe>
+        {% else %}
+          <div class="player-fallback" id="player-placeholder">
+            <div class="platform-icon">📡</div>
+            <p>Esperando metadata del stream…</p>
+          </div>
+        {% endif %}
+      </div>
+      {% if live.status == 'running' %}
+      <div style="margin-top: 0.75rem; text-align: right;">
+        <button class="btn btn-light" id="btn-stop" onclick="stopCapture()">Detener captura</button>
+      </div>
+      {% endif %}
+    </div>
+
+    {# Speed control card — hidden by default; shown only for VODs via JS #}
+    <div class="card" id="speed-control-card" style="display: none;">
+      <label for="player-speed" style="display: block; font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.3rem; font-weight: 600;">
+        Velocidad de reproducción
+      </label>
+      <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+        <button class="btn btn-light speed-btn active" data-speed="1" onclick="setPlayerSpeed(1)">1x</button>
+        <button class="btn btn-light speed-btn" data-speed="1.5" onclick="setPlayerSpeed(1.5)">1.5x</button>
+        <button class="btn btn-light speed-btn" data-speed="2" onclick="setPlayerSpeed(2)">2x</button>
+        <button class="btn btn-light speed-btn" data-speed="4" onclick="setPlayerSpeed(4)">4x</button>
+      </div>
+      <p class="muted" style="margin-top: 0.5rem; font-size: 0.8rem;">
+        Solo afecta lo que ves en el reproductor. El análisis sigue procesando el audio a su ritmo natural.
+      </p>
+    </div>
+
+    {# Sync card — hidden by default; shown only for VODs via JS #}
+    <div class="card" id="sync-card" style="display: none;">
+      <p class="muted" style="margin-bottom: 0.5rem; font-size: 0.85rem;">
+        Si adelantás el reproductor, el análisis sigue al ritmo del inicio. Saltá el análisis al punto donde estás mirando:
+      </p>
+      <button class="btn btn-primary" id="btn-sync" onclick="syncToPlayer()" style="width: 100%;">
+        Saltar análisis al minuto del reproductor
+      </button>
+    </div>
+
+    {# Pending claims card #}
+    <div class="card">
+      <h2 style="margin-top: 0;">Afirmaciones en verificación (<span id="pending-count">{{ live.pending_count }}</span>)</h2>
+      <div id="pending-list" class="claims-list">
+        {# Populated by JS via WebSocket #}
+      </div>
+      <div id="pending-empty" class="empty" {% if live.pending_count > 0 %}style="display:none"{% endif %}>
+        <p class="muted">Las afirmaciones que se detecten aparecerán aquí mientras se verifican.</p>
+      </div>
+    </div>
+
+    {# Verified claims card #}
+    <div class="card">
+      <h2 style="margin-top: 0;">Afirmaciones verificadas (<span id="verified-count">{{ verdicts|length }}</span>)</h2>
+      <div id="verified-list" class="claims-list">
+        {# Populated by JS; server-side verdicts rendered if video_id already linked #}
+        {% for claim in verdicts %}
+          {% set v = claim.verdict %}
+          {% set slug_map = {'Exacto': 'exacto', 'Parcialmente exacto': 'parcial', 'Inexacto': 'inexacto', 'Ridiculo': 'ridiculo'} %}
+          {% set slug = slug_map.get(v.verdict, 'otro') %}
+          <article class="verdict-card v-{{ slug }}" data-claim-id="{{ claim.local_id }}">
+            <header class="vh">
+              <span class="badge badge-{{ slug }}">{{ v.verdict }}</span>
+              <span class="confidence" title="Confianza del modelo en el veredicto según la cantidad y solidez de la evidencia recopilada (no mide la veracidad de lo dicho por el político).">{{ (v.confidence * 100)|int }}% confianza del análisis</span>
+              {% if claim.t_start is not none %}
+              <button class="timestamp" onclick="seekTo({{ claim.t_start|int }})">▶ {{ claim.t_start|seconds_to_mmss }}</button>
+              {% endif %}
+              <button class="toggle-detail" onclick="toggleDetail(this)" aria-label="Ver detalle">
+                Detalle <span class="chevron">▼</span>
+              </button>
+            </header>
+            <blockquote class="claim-text">"{{ claim.text }}"</blockquote>
+            <div class="detail-body">
+              <p class="attribution">— {{ claim.speaker or "Hablante no identificado" }}</p>
+              <div class="correction">
+                <h3>Análisis</h3>
+                <p>{{ v.correction }}</p>
+              </div>
+              <div class="sources">
+                <h3>Fuentes ({{ v.sources|length }})</h3>
+                <ol>
+                  {% for s in v.sources %}
+                  <li class="source">
+                    <a class="source-title" href="{{ s.url }}" target="_blank" rel="noopener">{{ s.title }}</a>
+                    {% if s.source_tier == 'open_web' %}
+                    <span class="source-tier tier-open" title="Búsqueda extendida">EXTENDIDA</span>
+                    {% elif s.source_tier == 'official_allowlist' %}
+                    <span class="source-tier tier-official" title="Fuente oficial">OFICIAL</span>
+                    {% endif %}
+                    <span class="source-date">consultado {{ s.retrieved_date }}</span>
+                    <blockquote class="excerpt">"{{ s.excerpt }}"</blockquote>
+                  </li>
+                  {% endfor %}
+                </ol>
+              </div>
+            </div>
+          </article>
+        {% endfor %}
+      </div>
+      {% if not verdicts %}
+      <div id="verified-empty" class="empty">
+        <p class="muted">Las afirmaciones verificadas aparecerán aquí.</p>
+      </div>
+      {% endif %}
+    </div>
+
+    {# Skipped claims card — hidden until first skip arrives #}
+    <div class="card" id="skipped-card" {% if not skipped %}style="display:none"{% endif %}>
+      <h2 style="margin-top: 0;">Sin verificar (<span id="skipped-count">{{ skipped|length }}</span>)</h2>
+      <p class="muted" style="margin-bottom: 0.75rem;">No se encontró evidencia concluyente en las fuentes.</p>
+      <div id="skipped-list" class="claims-list">
+        {% for claim in skipped %}
+        <article class="verdict-card v-skipped" data-claim-id="{{ claim.local_id }}">
+          <header class="vh">
+            <span class="badge badge-skipped">Sin verificar</span>
+            {% if claim.t_start is not none %}
+            <button class="timestamp" onclick="seekTo({{ claim.t_start|int }})">▶ {{ claim.t_start|seconds_to_mmss }}</button>
+            {% endif %}
+          </header>
+          <blockquote class="claim-text">"{{ claim.text }}"</blockquote>
+        </article>
+        {% endfor %}
+      </div>
+    </div>
+
+    {# Discarded segments card — hidden until first block_discarded event #}
+    <div class="card" id="discarded-card" style="display: none;">
+      <h2 style="margin-top: 0;">
+        Segmentos no analizados (<span id="discarded-count">0</span>)
+        <button class="toggle-detail" onclick="toggleDiscarded()" aria-label="Mostrar/ocultar">
+          <span class="chevron">▼</span>
+        </button>
+      </h2>
+      <p class="muted" style="margin-bottom: 0.75rem; font-size: 0.85rem;">
+        Bloques de transcripción identificados como publicidad, transiciones o ruido. No se enviaron a verificación.
+      </p>
+      <div id="discarded-list" class="claims-list" style="display: none;"></div>
+    </div>
+
+  </div>
+
+  {# RIGHT column: status panel #}
+  <div class="right-col">
+    <div class="card">
+      <div class="fact-panel">
+        <h2 class="fact-panel-title">Estado de la transmisión</h2>
+
+        <div id="status-badge-container" style="margin-bottom: 0.75rem;">
+          {% if live.status == 'running' %}
+          <span class="badge badge-live" id="status-badge">EN VIVO</span>
+          {% elif live.status == 'stopped' %}
+          <span class="badge badge-skipped" id="status-badge">Finalizada</span>
+          {% else %}
+          <span class="badge badge-skipped" id="status-badge">{{ live.status }}</span>
+          {% endif %}
+          <span class="badge badge-replay" id="replay-badge" style="display:none;"></span>
+        </div>
+
+        <div class="live-counters">
+          <span class="lbl">Fragmentos capturados</span>
+          <span class="val" id="stat-chunks">—</span>
+          <span class="lbl">En verificación</span>
+          <span class="val" id="stat-pending">{{ live.pending_count }}</span>
+          <span class="lbl">Verificadas</span>
+          <span class="val" id="stat-verified">{{ live.verified_count }}</span>
+          <span class="lbl">Sin verificar</span>
+          <span class="val" id="stat-skipped">{{ live.skipped_count }}</span>
+          <span class="lbl">Descartados</span>
+          <span class="val" id="discarded-count-panel">{{ live.discarded_count }}</span>
+        </div>
+
+        {% if live.status == 'running' %}
+        <button class="btn btn-light" id="btn-stop-right" onclick="stopCapture()" style="width: 100%; margin-top: 0.5rem;">Detener captura</button>
+        {% endif %}
+
+        <div id="status-message" style="margin-top: 0.75rem; font-size: 0.85rem; color: var(--text-muted);"></div>
+
+        <p class="informe-footer" style="margin-top: 1rem;">
+          Verificación automática con IA · Las afirmaciones detectadas se analizan en tiempo real
+        </p>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+function toggleDetail(btn) {
+  const card = btn.closest('.verdict-card');
+  if (!card) return;
+  card.classList.toggle('expanded');
+}
+
+function toggleDiscarded() {
+  const list = document.getElementById('discarded-list');
+  if (!list) return;
+  list.style.display = list.style.display === 'none' ? '' : 'none';
+}
+
+function seekTo(seconds) {
+  if (window.ytPlayer && typeof window.ytPlayer.seekTo === 'function') {
+    window.ytPlayer.seekTo(seconds, true);
+    if (typeof window.ytPlayer.playVideo === 'function') window.ytPlayer.playVideo();
+  } else {
+    // fallback to old behavior if API not ready
+    const iframe = document.getElementById('yt-player');
+    if (!iframe) return;
+    const videoId = iframe.dataset.videoId;
+    iframe.src = `https://www.youtube.com/embed/${videoId}?start=${seconds}&autoplay=1&rel=0&enablejsapi=1`;
+  }
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function escapeHTML(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function stopCapture() {
+  const btns = [document.getElementById('btn-stop'), document.getElementById('btn-stop-right')];
+  btns.forEach(b => { if (b) { b.disabled = true; b.textContent = 'Deteniendo…'; } });
+  fetch('/api/live/stop/{{ live.id }}', { method: 'POST' })
+    .then(() => {})
+    .catch(() => {});
+}
+
+// ------------------------------------------------------------------
+// Sync analysis to player position (VOD only)
+// ------------------------------------------------------------------
+function syncToPlayer() {
+  if (!window.ytPlayer || typeof window.ytPlayer.getCurrentTime !== 'function') {
+    alert('El reproductor aún no está listo.');
+    return;
+  }
+  const seconds = Math.floor(window.ytPlayer.getCurrentTime() || 0);
+  const btn = document.getElementById('btn-sync');
+  if (btn) { btn.disabled = true; btn.textContent = `Saltando a ${Math.floor(seconds/60)}:${String(seconds%60).padStart(2,'0')}…`; }
+  const fd = new FormData();
+  fd.append('seconds', seconds);
+  fetch(`/api/live/sync/{{ live.id }}`, { method: 'POST', body: fd })
+    .then(r => r.json())
+    .then(data => {
+      if (data.live_id) {
+        window.location.href = `/live/${data.live_id}`;
+      } else {
+        alert('No se pudo saltar.');
+        if (btn) { btn.disabled = false; btn.textContent = 'Saltar análisis al minuto del reproductor'; }
+      }
+    })
+    .catch(e => {
+      alert('Error: ' + e);
+      if (btn) { btn.disabled = false; btn.textContent = 'Saltar análisis al minuto del reproductor'; }
+    });
+}
+
+// ------------------------------------------------------------------
+// YouTube IFrame API
+// ------------------------------------------------------------------
+window.ytPlayer = null;
+window.onYouTubeIframeAPIReady = function() {
+  initYTPlayer();
+};
+function initYTPlayer() {
+  const iframe = document.getElementById('yt-player');
+  if (!iframe || window.ytPlayer || typeof YT === 'undefined' || !YT.Player) return;
+  try {
+    window.ytPlayer = new YT.Player('yt-player', {
+      events: { 'onReady': function() { /* player ready */ } }
+    });
+  } catch (e) { /* ignore — may fail if iframe not fully loaded */ }
+}
+function setPlayerSpeed(rate) {
+  if (window.ytPlayer && typeof window.ytPlayer.setPlaybackRate === 'function') {
+    window.ytPlayer.setPlaybackRate(parseFloat(rate));
+  }
+  document.querySelectorAll('.speed-btn').forEach(function(b) {
+    b.classList.toggle('active', parseFloat(b.dataset.speed) === parseFloat(rate));
+  });
+}
+document.addEventListener('DOMContentLoaded', function() {
+  setTimeout(initYTPlayer, 500);
+});
+
+// ------------------------------------------------------------------
+// WebSocket client
+// ------------------------------------------------------------------
+(function() {
+  const liveId = "{{ live.id }}";
+  const currentStatus = "{{ live.status }}";
+
+  // Don't reconnect if already finished
+  if (currentStatus === 'stopped' || currentStatus === 'failed') return;
+
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  const ws = new WebSocket(`${proto}://${location.host}/ws/live/${liveId}`);
+
+  const pendingList = document.getElementById('pending-list');
+  const pendingEmpty = document.getElementById('pending-empty');
+  const verifiedList = document.getElementById('verified-list');
+  const verifiedEmpty = document.getElementById('verified-empty');
+  const skippedList = document.getElementById('skipped-list');
+  const skippedCard = document.getElementById('skipped-card');
+  const discardedCard = document.getElementById('discarded-card');
+  const discardedList = document.getElementById('discarded-list');
+  const statusMsg = document.getElementById('status-message');
+  let lastError = null;
+
+  function updateCounter(id, val) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = val;
+  }
+
+  function pendingCardHTML(claim) {
+    const ts = (claim.t_start !== null && claim.t_start !== undefined)
+      ? `<button class="timestamp" onclick="seekTo(${Math.floor(claim.t_start)})">▶ ${fmtTime(claim.t_start)}</button>`
+      : '';
+    return `<article class="verdict-card v-pending" data-claim-id="${escapeHTML(claim.id)}">
+      <header class="vh">
+        <span class="badge badge-pending">Verificando…</span>
+        ${ts}
+      </header>
+      <blockquote class="claim-text">"${escapeHTML(claim.claim)}"</blockquote>
+    </article>`;
+  }
+
+  const SLUG_MAP = {
+    'Exacto': 'exacto',
+    'Parcialmente exacto': 'parcial',
+    'Inexacto': 'inexacto',
+    'Ridiculo': 'ridiculo',
+  };
+
+  function verifiedCardHTML(verdict, evidence) {
+    const slug = SLUG_MAP[verdict.verdict] || 'otro';
+    const confPct = Math.round((verdict.confidence || 0) * 100);
+    const ts = (verdict.t_start !== null && verdict.t_start !== undefined)
+      ? `<button class="timestamp" onclick="seekTo(${Math.floor(verdict.t_start)})">▶ ${fmtTime(verdict.t_start)}</button>`
+      : '';
+    const sources = (verdict.sources || []);
+    let sourcesHtml = '';
+    if (sources.length) {
+      const items = sources.map(s => {
+        const tierBadge = s.source_tier === 'open_web'
+          ? `<span class="source-tier tier-open" title="Búsqueda extendida">EXTENDIDA</span>`
+          : s.source_tier === 'official_allowlist'
+          ? `<span class="source-tier tier-official" title="Fuente oficial">OFICIAL</span>`
+          : '';
+        return `<li class="source">
+          <a class="source-title" href="${escapeHTML(s.url || '')}" target="_blank" rel="noopener">${escapeHTML(s.title || '')}</a>
+          ${tierBadge}
+          <span class="source-date">consultado ${escapeHTML(s.retrieved_date || '')}</span>
+          ${s.excerpt ? `<blockquote class="excerpt">"${escapeHTML(s.excerpt)}"</blockquote>` : ''}
+        </li>`;
+      }).join('');
+      sourcesHtml = `<div class="sources"><h3>Fuentes (${sources.length})</h3><ol>${items}</ol></div>`;
+    }
+    // Note: voting panel is omitted for live-stream cards — vote tallies require
+    // server-side session context that isn't available in the real-time JS path.
+    return `<article class="verdict-card v-${slug}" data-claim-id="${escapeHTML(verdict.id || '')}">
+      <header class="vh">
+        <span class="badge badge-${slug}">${escapeHTML(verdict.verdict || '')}</span>
+        <span class="confidence" title="Confianza del modelo en el veredicto según la cantidad y solidez de la evidencia recopilada (no mide la veracidad de lo dicho por el político).">${confPct}% confianza del análisis</span>
+        ${ts}
+        <button class="toggle-detail" onclick="toggleDetail(this)" aria-label="Ver detalle">Detalle <span class="chevron">▼</span></button>
+      </header>
+      <blockquote class="claim-text">"${escapeHTML(verdict.claim || '')}"</blockquote>
+      <div class="detail-body">
+        <p class="attribution">— ${escapeHTML(verdict.speaker || 'Hablante no identificado')}</p>
+        <div class="correction"><h3>Análisis</h3><p>${escapeHTML(verdict.correction || '')}</p></div>
+        ${sourcesHtml}
+      </div>
+    </article>`;
+  }
+
+  function skippedCardHTML(ev) {
+    const ts = (ev.t_start !== null && ev.t_start !== undefined)
+      ? `<button class="timestamp" onclick="seekTo(${Math.floor(ev.t_start)})">▶ ${fmtTime(ev.t_start)}</button>`
+      : '';
+    return `<article class="verdict-card v-skipped" data-claim-id="${escapeHTML(ev.id || '')}">
+      <header class="vh">
+        <span class="badge badge-skipped">Sin verificar</span>
+        ${ts}
+      </header>
+      <blockquote class="claim-text">"${escapeHTML(ev.claim || '')}"</blockquote>
+    </article>`;
+  }
+
+  function discardedCardHTML(ev) {
+    const ts = (ev.t_start !== null && ev.t_start !== undefined)
+      ? `<button class="timestamp" onclick="seekTo(${Math.floor(ev.t_start)})">▶ ${fmtTime(ev.t_start)}</button>`
+      : '';
+    const confPct = Math.round((ev.confidence || 0) * 100);
+    const rawText = (ev.text || '');
+    const truncText = rawText.length > 280 ? rawText.substring(0, 280) + '…' : rawText;
+    return `<article class="verdict-card v-discarded">
+      <header class="vh">
+        <span class="badge badge-discarded">${escapeHTML(ev.label || '')}</span>
+        ${ts}
+        <span class="confidence">${confPct}% confianza</span>
+      </header>
+      <blockquote class="claim-text">"${escapeHTML(truncText)}"</blockquote>
+      <p class="muted" style="margin: 0.4rem 0 0; font-size: 0.85rem;">Motivo: ${escapeHTML(ev.reason || '')}</p>
+    </article>`;
+  }
+
+  function fmtTime(s) {
+    const total = Math.floor(s || 0);
+    const m = Math.floor(total / 60);
+    const sec = String(total % 60).padStart(2, '0');
+    return `${m}:${sec}`;
+  }
+
+  function removePendingCard(claimId) {
+    const el = pendingList.querySelector(`[data-claim-id="${CSS.escape(claimId)}"]`);
+    if (el) el.remove();
+  }
+
+  ws.onmessage = (msg) => {
+    let ev;
+    try { ev = JSON.parse(msg.data); } catch { return; }
+    if (ev.type === 'ping') return;
+
+    if (ev.type === 'metadata_ready') {
+      const m = ev.metadata || {};
+      if (m.id && !document.getElementById('yt-player')) {
+        const playerBox = document.getElementById('player-box');
+        if (playerBox) {
+          const offset = parseInt(playerBox.dataset.startOffset || '0', 10) || 0;
+          const startParam = offset > 0 ? `&start=${offset}` : '';
+          playerBox.innerHTML = `<iframe id="yt-player"
+            data-video-id="${escapeHTML(m.id)}"
+            src="https://www.youtube.com/embed/${escapeHTML(m.id)}?rel=0&enablejsapi=1${startParam}"
+            frameborder="0"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+            referrerpolicy="strict-origin-when-cross-origin"
+            allowfullscreen></iframe>`;
+          // Bind YT API to the newly created iframe after a short delay
+          setTimeout(initYTPlayer, 800);
+        }
+      }
+      // For VOD: show speed-control card, sync card, and update status badge
+      if (m.is_live === false) {
+        const speedCard = document.getElementById('speed-control-card');
+        if (speedCard) speedCard.style.display = '';
+        const syncCard = document.getElementById('sync-card');
+        if (syncCard) syncCard.style.display = '';
+        const liveBadge = document.getElementById('status-badge');
+        if (liveBadge && liveBadge.classList.contains('badge-live')) {
+          liveBadge.className = 'badge badge-skipped';
+          liveBadge.textContent = 'VOD';
+        }
+        // Hide replay-speed badge (no longer user-controlled)
+        const replayBadge = document.getElementById('replay-badge');
+        if (replayBadge) replayBadge.style.display = 'none';
+      }
+    }
+
+    else if (ev.type === 'claim_pending') {
+      const claim = ev.claim;
+      if (!claim) return;
+      if (pendingEmpty) pendingEmpty.style.display = 'none';
+      const div = document.createElement('div');
+      div.innerHTML = pendingCardHTML(claim);
+      pendingList.prepend(div.firstElementChild);
+      const pc = document.getElementById('pending-count');
+      if (pc) pc.textContent = parseInt(pc.textContent || '0') + 1;
+    }
+
+    else if (ev.type === 'claim_verdict_ready') {
+      const verdict = ev.verdict;
+      if (!verdict) return;
+      removePendingCard(verdict.id);
+      const pc = document.getElementById('pending-count');
+      if (pc) pc.textContent = Math.max(0, parseInt(pc.textContent || '0') - 1);
+
+      if (verifiedEmpty) verifiedEmpty.style.display = 'none';
+      const div = document.createElement('div');
+      div.innerHTML = verifiedCardHTML(verdict, ev.research_evidence || []);
+      verifiedList.prepend(div.firstElementChild);
+      const vc = document.getElementById('verified-count');
+      if (vc) vc.textContent = parseInt(vc.textContent || '0') + 1;
+    }
+
+    else if (ev.type === 'claim_skipped') {
+      removePendingCard(ev.id);
+      const pc = document.getElementById('pending-count');
+      if (pc) pc.textContent = Math.max(0, parseInt(pc.textContent || '0') - 1);
+
+      if (skippedCard) skippedCard.style.display = '';
+      const div = document.createElement('div');
+      div.innerHTML = skippedCardHTML(ev);
+      skippedList.prepend(div.firstElementChild);
+      const sc = document.getElementById('skipped-count');
+      if (sc) sc.textContent = parseInt(sc.textContent || '0') + 1;
+    }
+
+    else if (ev.type === 'block_discarded') {
+      if (discardedCard) discardedCard.style.display = '';
+      const dc = document.getElementById('discarded-count');
+      if (dc) dc.textContent = parseInt(dc.textContent || '0') + 1;
+      const dcp = document.getElementById('discarded-count-panel');
+      if (dcp) dcp.textContent = parseInt(dcp.textContent || '0') + 1;
+      if (discardedList) {
+        const div = document.createElement('div');
+        div.innerHTML = discardedCardHTML(ev);
+        discardedList.prepend(div.firstElementChild);
+      }
+    }
+
+    else if (ev.type === 'live_status') {
+      updateCounter('stat-chunks', ev.chunks ?? '—');
+      updateCounter('stat-pending', ev.pending ?? 0);
+      updateCounter('stat-verified', ev.verified ?? 0);
+      updateCounter('stat-skipped', ev.skipped ?? 0);
+      if (ev.discarded != null) updateCounter('discarded-count-panel', ev.discarded);
+    }
+
+    else if (ev.type === 'stream_end') {
+      const badge = document.getElementById('status-badge');
+      const failed = ev.status === 'failed' || ev.error;
+      const errorText = ev.error || lastError;
+      if (badge) {
+        badge.className = failed ? 'badge badge-inexacto' : 'badge badge-skipped';
+        badge.textContent = failed ? 'Falló' : 'Finalizada';
+      }
+      const stopBtns = [document.getElementById('btn-stop'), document.getElementById('btn-stop-right')];
+      stopBtns.forEach(b => { if (b) b.style.display = 'none'; });
+      if (statusMsg) {
+        if (failed) {
+          statusMsg.textContent = `Error: ${escapeHTML(errorText || 'la captura falló sin detalles. Revisá la consola del servidor.')}`;
+          statusMsg.style.color = 'var(--danger)';
+        } else {
+          statusMsg.textContent = 'Captura finalizada. Los resultados han sido guardados.';
+          statusMsg.style.color = '';
+        }
+      }
+    }
+
+    else if (ev.type === 'error') {
+      lastError = ev.error || '';
+      if (statusMsg) {
+        statusMsg.textContent = `Error: ${escapeHTML(lastError)}`;
+        statusMsg.style.color = 'var(--danger)';
+      }
+    }
+  };
+
+  ws.onerror = () => {
+    if (statusMsg) statusMsg.textContent = 'Conexión perdida con el servidor.';
+  };
+})();
+</script>
+
+{% endblock %}

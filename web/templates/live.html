@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+{% block title %}Transmisión en vivo — DatoContraRelato{% endblock %}
+{% block content %}
+
+<h1>Analizar transmisión en vivo</h1>
+<p class="muted" style="margin-bottom: 1.25rem;">
+  Pegá la URL de un video en vivo de YouTube. El sistema capturará audio en tiempo real, transcribirá por fragmentos y verificará las afirmaciones mientras el stream avanza.
+</p>
+
+<form id="live-form" onsubmit="return submitLive(event)">
+  <div class="topbar">
+    <input
+      type="text"
+      id="live_url"
+      name="url"
+      placeholder="https://www.youtube.com/watch?v=... (live)"
+      autofocus
+      required>
+    <button type="button" class="btn btn-light" onclick="pasteFromClipboard()">Pegar</button>
+    <button type="button" class="btn btn-light" onclick="clearInput()">Limpiar</button>
+    <button type="submit" class="btn btn-primary" id="submit-btn">Iniciar captura</button>
+  </div>
+  <div id="url-status" style="margin: 0.5rem 0 1rem; font-size: 0.85rem; color: var(--text-muted);"></div>
+
+</form>
+
+<div id="message" class="message"></div>
+
+{% if sessions %}
+<h2>Sesiones recientes</h2>
+<ul class="video-list">
+  {% for s in sessions %}
+  <li>
+    <a href="/live/{{ s.id }}" style="text-decoration: none; color: inherit; display: block;">
+      <div class="video-row">
+        <div class="meta">
+          <div class="title">{{ s.title or s.url }}</div>
+          <div class="sub" style="margin-top: 0.4rem;">
+            <span class="platform-tag">youtube live</span>
+            {% if s.channel %}<span>{{ s.channel }}</span>{% endif %}
+            <span class="badge {% if s.status == 'running' %}badge-live{% elif s.status == 'stopped' %}badge-skipped{% else %}badge-inexacto{% endif %}" style="font-size: 0.72rem; padding: 0.15rem 0.55rem;">{{ s.status }}</span>
+            <span>{{ s.verified_count }} verificadas · {{ s.skipped_count }} sin verificar</span>
+          </div>
+        </div>
+      </div>
+    </a>
+  </li>
+  {% endfor %}
+</ul>
+{% else %}
+<div class="card">
+  <div class="empty">
+    <div class="icon">📡</div>
+    <p>Todavía no hay sesiones en vivo. Pegá una URL arriba para comenzar.</p>
+  </div>
+</div>
+{% endif %}
+
+<script>
+async function pasteFromClipboard() {
+  try {
+    const text = await navigator.clipboard.readText();
+    document.getElementById('live_url').value = text;
+    triggerDetect();
+  } catch (err) {
+    alert('No se pudo pegar. Usá Ctrl+V manualmente.');
+  }
+}
+
+function clearInput() {
+  document.getElementById('live_url').value = '';
+  document.getElementById('url-status').textContent = '';
+  document.getElementById('live_url').focus();
+}
+
+// URL detection with AbortController debounce
+let _detectController = null;
+
+function triggerDetect() {
+  const url = document.getElementById('live_url').value.trim();
+  const statusEl = document.getElementById('url-status');
+
+  if (!url || !url.startsWith('http')) {
+    statusEl.textContent = '';
+    return;
+  }
+
+  // Abort any in-flight request
+  if (_detectController) {
+    _detectController.abort();
+  }
+  _detectController = new AbortController();
+  const signal = _detectController.signal;
+
+  statusEl.innerHTML = '<span style="color: var(--text-muted);">Detectando tipo de URL…</span>';
+
+  fetch('/api/live/detect?url=' + encodeURIComponent(url), { signal })
+    .then(r => r.json())
+    .then(data => {
+      if (data.detail || data.error) {
+        statusEl.innerHTML = '<span style="color: var(--text-muted);">No se pudo detectar el tipo (igual podés intentar analizarlo).</span>';
+        return;
+      }
+      const titleText = data.title ? ' · ' + data.title : '';
+      if (data.is_live) {
+        statusEl.innerHTML = '<span style="color: var(--danger);">🔴 EN VIVO detectado' + titleText + '</span>';
+      } else {
+        statusEl.innerHTML = '<span style="color: var(--accent);">🎞 Transmisión grabada (VOD)' + titleText + '</span>';
+      }
+    })
+    .catch(e => {
+      if (e.name === 'AbortError') return; // intentionally aborted
+      statusEl.innerHTML = '<span style="color: var(--text-muted);">No se pudo detectar el tipo (igual podés intentar analizarlo).</span>';
+    });
+}
+
+// Attach blur and paste listeners after DOM ready
+document.addEventListener('DOMContentLoaded', function () {
+  const urlInput = document.getElementById('live_url');
+
+  urlInput.addEventListener('blur', function () {
+    triggerDetect();
+  });
+
+  urlInput.addEventListener('paste', function () {
+    setTimeout(triggerDetect, 200);
+  });
+});
+
+function submitLive(ev) {
+  ev.preventDefault();
+  const url = document.getElementById('live_url').value.trim();
+  if (!url) return false;
+
+  const btn = document.getElementById('submit-btn');
+  const message = document.getElementById('message');
+  btn.disabled = true;
+  btn.textContent = 'Iniciando…';
+  message.textContent = '';
+
+  const fd = new FormData();
+  fd.append('url', url);
+  fd.append('replay_speed', '1.0');
+
+  fetch('/api/live/start', { method: 'POST', body: fd })
+    .then(r => r.json())
+    .then(data => {
+      if (data.detail || data.error) {
+        message.textContent = 'Error: ' + (data.detail || data.error);
+        btn.disabled = false;
+        btn.textContent = 'Iniciar captura';
+        return;
+      }
+      location.href = `/live/${data.live_id}`;
+    })
+    .catch(e => {
+      message.textContent = 'Error: ' + e;
+      btn.disabled = false;
+      btn.textContent = 'Iniciar captura';
+    });
+  return false;
+}
+</script>
+
+{% endblock %}

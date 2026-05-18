@@ -1,4 +1,4 @@
-# PolitiCheck
+# DatoContraRelato
 
 Pipeline automatizado de fact-checking de discursos políticos en video. Recibe una URL (YouTube, YouTube Shorts, TikTok, Instagram Reels) y produce un reporte HTML autocontenido con cada afirmación factual del video contrastada contra fuentes oficiales chilenas e internacionales.
 

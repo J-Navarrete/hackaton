@@ -467,7 +467,6 @@ details p {
 }
 .empty .icon { font-size: 3rem; margin-bottom: 0.75rem; opacity: 0.4; }
 
-<<<<<<< HEAD
 /* ============================================================ Informe Panel (right col) */
 .fact-panel { display: flex; flex-direction: column; gap: 0.75rem; }
 
@@ -571,8 +570,7 @@ details p {
   }
 }
 
-=======
->>>>>>> c52ca7a4c3418b51214353c8a145d9a5cfc4dac6
+
 /* ============================================================ Responsive */
 @media (max-width: 960px) {
   .detail-grid { grid-template-columns: 1fr; }
@@ -585,4 +583,73 @@ details p {
   .timestamp { margin-left: 0; }
   .vh { gap: 0.5rem; }
   .topbar input[type="text"], .topbar input[type="url"] { min-width: 100%; }
+}
+
+/* ============================================================ Live: pending card variant */
+.verdict-card.v-pending {
+  background: var(--surface);
+  border-left: 4px solid var(--accent);
+}
+.badge-pending {
+  background: rgba(56, 189, 248, 0.18);
+  color: var(--accent);
+  border-color: var(--accent);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.badge-pending::before {
+  content: "";
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: live-pulse 1.2s ease-in-out infinite;
+}
+.badge-live {
+  background: rgba(239, 68, 68, 0.22);
+  color: var(--danger);
+  border-color: var(--danger);
+}
+.badge-live::before {
+  content: "●";
+  margin-right: 0.35rem;
+  animation: live-pulse 1.2s ease-in-out infinite;
+}
+@keyframes live-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+.live-counters {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.5rem 1rem;
+  margin: 0.75rem 0;
+  font-size: 0.85rem;
+}
+.live-counters .lbl { color: var(--text-muted); }
+.live-counters .val { font-weight: 700; color: var(--text); font-family: 'JetBrains Mono', monospace; }
+
+/* ============================================================ Live: discarded block variant */
+.verdict-card.v-discarded {
+  background: var(--surface);
+  opacity: 0.85;
+}
+.badge-discarded {
+  background: var(--skipped-tint, rgba(148, 163, 184, 0.18));
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.badge-replay {
+  background: rgba(56, 189, 248, 0.18);
+  color: var(--accent);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* Speed selector buttons (live_session VOD only) */
+.speed-btn.active {
+  background: var(--accent);
+  color: var(--bg);
+  border-color: var(--accent);
 }

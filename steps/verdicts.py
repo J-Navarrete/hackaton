@@ -136,56 +136,23 @@ def _format_user_msg(claim: dict, research: dict) -> str:
     return "\n".join(parts)
 
 
-async def _judge_one(
-    client: AsyncAnthropic,
-    claim: dict,
-    research: dict,
-    model: str,
-    max_tokens: int,
-) -> dict:
-    user_msg = _format_user_msg(claim, research)
-    try:
-        response = await client.messages.create(
-            model=model,
-            max_tokens=max_tokens,
-            system=_SYSTEM,
-            tools=[_SUBMIT_VERDICT_TOOL],
-            tool_choice={"type": "tool", "name": "submit_verdict"},
-            messages=[{"role": "user", "content": user_msg}],
-        )
-    except Exception as e:
-        return {
-            "id": claim["id"],
-            "claim": claim["claim"],
-            "speaker": claim.get("speaker"),
-            "claim_type": claim.get("claim_type"),
-            "t_start": claim.get("t_start"),
-            "t_end": claim.get("t_end"),
-            "segment_ids": claim.get("segment_ids", []),
-            "verdict": None,
-            "confidence": 0.0,
-            "correction": "",
-            "sources": [],
-            "_error": f"{type(e).__name__}: {e}",
-        }
+def _build_verdict_record(claim: dict, v: dict) -> dict:
+    return {
+        "id": claim["id"],
+        "claim": claim["claim"],
+        "speaker": claim.get("speaker"),
+        "claim_type": claim.get("claim_type"),
+        "t_start": claim.get("t_start"),
+        "t_end": claim.get("t_end"),
+        "segment_ids": claim.get("segment_ids", []),
+        "verdict": v.get("verdict"),
+        "confidence": v.get("confidence"),
+        "correction": v.get("correction"),
+        "sources": _normalize_dict_list(v.get("key_sources")),
+    }
 
-    for block in response.content:
-        if getattr(block, "type", None) == "tool_use" and block.name == "submit_verdict":
-            v = dict(block.input)
-            return {
-                "id": claim["id"],
-                "claim": claim["claim"],
-                "speaker": claim.get("speaker"),
-                "claim_type": claim.get("claim_type"),
-                "t_start": claim.get("t_start"),
-                "t_end": claim.get("t_end"),
-                "segment_ids": claim.get("segment_ids", []),
-                "verdict": v.get("verdict"),
-                "confidence": v.get("confidence"),
-                "correction": v.get("correction"),
-                "sources": _normalize_dict_list(v.get("key_sources")),
-            }
 
+def _build_error_record(claim: dict, error: str) -> dict:
     return {
         "id": claim["id"],
         "claim": claim["claim"],
@@ -198,8 +165,66 @@ async def _judge_one(
         "confidence": 0.0,
         "correction": "",
         "sources": [],
-        "_error": f"no submit_verdict call, stop_reason={response.stop_reason}",
+        "_error": error,
     }
+
+
+def _judge_one_sync_minimax(claim: dict, research: dict, model: str, max_tokens: int) -> dict:
+    from .minimax_client import DEFAULT_MODEL, chat, get_tool_args, to_openai_tool, to_openai_tool_choice
+    user_msg = _format_user_msg(claim, research)
+    tool = dict(_SUBMIT_VERDICT_TOOL)
+    tool.pop("cache_control", None)
+    try:
+        msg = chat(
+            messages=[{"role": "user", "content": user_msg}],
+            system=_SYSTEM,
+            tools=[to_openai_tool(tool)],
+            tool_choice=to_openai_tool_choice("submit_verdict"),
+            model=model or DEFAULT_MODEL,
+            max_tokens=max_tokens + 1000,
+        )
+    except Exception as e:
+        return _build_error_record(claim, f"{type(e).__name__}: {e}")
+
+    args = get_tool_args(msg, "submit_verdict")
+    if args is None:
+        return _build_error_record(claim, "MiniMax no llamo submit_verdict")
+    return _build_verdict_record(claim, args)
+
+
+async def _judge_one(
+    client: AsyncAnthropic,
+    claim: dict,
+    research: dict,
+    model: str,
+    max_tokens: int,
+    provider: str = "claude",
+) -> dict:
+    if provider == "minimax":
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(
+            None, lambda: _judge_one_sync_minimax(claim, research, model, max_tokens)
+        )
+
+    user_msg = _format_user_msg(claim, research)
+    try:
+        response = await client.messages.create(
+            model=model,
+            max_tokens=max_tokens,
+            system=_SYSTEM,
+            tools=[_SUBMIT_VERDICT_TOOL],
+            tool_choice={"type": "tool", "name": "submit_verdict"},
+            messages=[{"role": "user", "content": user_msg}],
+        )
+    except Exception as e:
+        return _build_error_record(claim, f"{type(e).__name__}: {e}")
+
+    for block in response.content:
+        if getattr(block, "type", None) == "tool_use" and block.name == "submit_verdict":
+            record = _build_verdict_record(claim, dict(block.input))
+            return record
+
+    return _build_error_record(claim, f"no submit_verdict call, stop_reason={response.stop_reason}")
 
 
 async def _judge_all_async(

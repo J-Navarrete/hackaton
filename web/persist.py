@@ -9,7 +9,7 @@ from datetime import datetime
 
 from sqlalchemy.orm import Session
 
-from web.db import Claim, Verdict, Video
+from web.db import Claim, LiveSession, Verdict, Video
 
 
 _PLATFORM_PATTERNS = [
@@ -31,11 +31,11 @@ def detect_platform(url: str) -> str:
 
 def build_embed_html(video: Video) -> str | None:
     """Build a self-contained embed HTML snippet. Only YouTube supports timestamp deep-links."""
-    if video.platform in ("youtube", "youtube_short"):
+    if video.platform in ("youtube", "youtube_short", "youtube_live"):
         return (
             f'<iframe id="yt-player" '
             f'data-video-id="{video.id}" '
-            f'src="https://www.youtube.com/embed/{video.id}?rel=0" '
+            f'src="https://www.youtube.com/embed/{video.id}?rel=0&enablejsapi=1" '
             f'frameborder="0" '
             f'allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" '
             f'referrerpolicy="strict-origin-when-cross-origin" '
@@ -44,13 +44,13 @@ def build_embed_html(video: Video) -> str | None:
     return None  # TikTok/IG render as deep-links in the template
 
 
-def upsert_video(session: Session, url: str, metadata: dict) -> Video:
+def upsert_video(session: Session, url: str, metadata: dict, force_platform: str | None = None) -> Video:
     video_id = metadata.get("id")
     if not video_id:
         raise ValueError("metadata must contain 'id'")
 
     existing = session.get(Video, video_id)
-    platform = detect_platform(url)
+    platform = force_platform if force_platform is not None else detect_platform(url)
     fields = dict(
         url=url,
         platform=platform,
@@ -141,3 +141,39 @@ def insert_skipped_claim(session: Session, video_id: str, skipped: dict) -> Clai
     session.add(db_claim)
     session.flush()
     return db_claim
+
+
+# ---------------------------------------------------------------------------
+# LiveSession helpers
+# ---------------------------------------------------------------------------
+
+_LIVE_ALLOWED_FIELDS = {
+    "video_id", "title", "channel", "status",
+    "ended_at", "pending_count", "verified_count", "skipped_count", "discarded_count",
+}
+
+
+def create_live_session(session: Session, live_id: str, url: str) -> LiveSession:
+    ls = LiveSession(id=live_id, url=url, status="starting")
+    session.add(ls)
+    session.flush()
+    return ls
+
+
+def update_live_session(session: Session, live_id: str, **fields) -> "LiveSession | None":
+    ls = session.get(LiveSession, live_id)
+    if ls is None:
+        return None
+    for k, v in fields.items():
+        if k in _LIVE_ALLOWED_FIELDS:
+            setattr(ls, k, v)
+    session.flush()
+    return ls
+
+
+def mark_live_stopped(session: Session, live_id: str, status: str = "stopped") -> None:
+    ls = session.get(LiveSession, live_id)
+    if ls:
+        ls.status = status
+        ls.ended_at = datetime.utcnow()
+        session.flush()

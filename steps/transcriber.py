@@ -6,6 +6,7 @@ from pathlib import Path
 def _add_nvidia_dll_dirs() -> None:
     if sys.platform != "win32":
         return
+    bin_dirs: list[str] = []
     for entry in sys.path:
         nvidia_root = Path(entry) / "nvidia"
         if not nvidia_root.is_dir():
@@ -13,15 +14,39 @@ def _add_nvidia_dll_dirs() -> None:
         for child in nvidia_root.iterdir():
             bin_dir = child / "bin"
             if bin_dir.is_dir():
+                bin_dirs.append(str(bin_dir))
                 try:
                     os.add_dll_directory(str(bin_dir))
                 except OSError:
                     pass
+    if bin_dirs:
+        current = os.environ.get("PATH", "")
+        # Prepend so transitive DLL loads (e.g. cublas → cudart) resolve via the
+        # standard Windows search. add_dll_directory alone is not honored by
+        # dependent DLL loads inside ctranslate2.
+        os.environ["PATH"] = os.pathsep.join(bin_dirs + [current])
 
 
 _add_nvidia_dll_dirs()
 
 from faster_whisper import WhisperModel  # noqa: E402
+
+# ---------------------------------------------------------------------------
+# Module-level model cache — keyed by (model_size, device, compute_type).
+# Prevents re-downloading / re-checking the HF revision on every chunk call.
+# ---------------------------------------------------------------------------
+_MODEL_CACHE: dict[tuple[str, str, str], "WhisperModel"] = {}
+
+
+def _load_model(model_size: str, device: str, compute_type: str) -> "WhisperModel":
+    key = (model_size, device, compute_type)
+    if key in _MODEL_CACHE:
+        return _MODEL_CACHE[key]
+    # First load — let HF check the local cache. Subsequent calls reuse the
+    # already-loaded in-memory instance so no HF network request is made.
+    model = WhisperModel(model_size, device=device, compute_type=compute_type)
+    _MODEL_CACHE[key] = model
+    return model
 
 
 def _autodetect_device() -> str:
@@ -58,10 +83,6 @@ def transcribe_audio(
     if compute_type is None:
         compute_type = _default_compute_type(device)
 
-<<<<<<< HEAD
-    def _load_model(dev: str, ct: str) -> "WhisperModel":
-        return WhisperModel(model_size, device=dev, compute_type=ct)
-
     def _run_transcribe(mdl, dev: str):
         return mdl.transcribe(
             str(audio_path),
@@ -73,18 +94,13 @@ def transcribe_audio(
         )
 
     try:
-        model = _load_model(device, compute_type)
-=======
-    try:
-        model = WhisperModel(model_size, device=device, compute_type=compute_type)
->>>>>>> c52ca7a4c3418b51214353c8a145d9a5cfc4dac6
+        model = _load_model(model_size, device, compute_type)
     except Exception as e:
         if device == "cuda":
             print(f"      [warn] carga en CUDA fallo ({type(e).__name__}: {e}). Cayendo a CPU.")
             device = "cpu"
             compute_type = _default_compute_type(device)
-<<<<<<< HEAD
-            model = _load_model(device, compute_type)
+            model = _load_model(model_size, device, compute_type)
         else:
             raise
 
@@ -105,52 +121,18 @@ def transcribe_audio(
             print(f"      [warn] CUDA fallo durante transcripcion ({type(e).__name__}: {e}). Reintentando en CPU.")
             device = "cpu"
             compute_type = _default_compute_type(device)
-            model = _load_model(device, compute_type)
+            model = _load_model(model_size, device, compute_type)
             segments, text_parts, info = _collect_segments(model, device)
         else:
             raise
 
     return {
-        "text": "".join(text_parts).strip(),  # text_parts ya es lista materializada
-=======
-            model = WhisperModel(model_size, device=device, compute_type=compute_type)
-        else:
-            raise
-
-    segments_iter, info = model.transcribe(
-        str(audio_path),
-        language=language,
-        beam_size=beam_size,
-        vad_filter=vad_filter,
-        initial_prompt=initial_prompt,
-        condition_on_previous_text=condition_on_previous_text,
-    )
-
-    segments: list[dict] = []
-    text_parts: list[str] = []
-    for s in segments_iter:
-        segments.append(
-            {
-                "id": s.id,
-                "start": round(s.start, 3),
-                "end": round(s.end, 3),
-                "text": s.text.strip(),
-            }
-        )
-        text_parts.append(s.text)
-
-    return {
         "text": "".join(text_parts).strip(),
->>>>>>> c52ca7a4c3418b51214353c8a145d9a5cfc4dac6
         "language": info.language,
         "language_probability": round(info.language_probability, 3),
         "duration": round(info.duration, 3),
         "model": f"faster-whisper:{model_size}",
-<<<<<<< HEAD
-        "device": device,   # refleja el device real usado (puede haber caído a cpu)
-=======
         "device": device,
->>>>>>> c52ca7a4c3418b51214353c8a145d9a5cfc4dac6
         "compute_type": compute_type,
         "initial_prompt": initial_prompt,
         "segments": segments,
